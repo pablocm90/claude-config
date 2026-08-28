@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# preflight: refuse to commit what this public repo must not carry — a client
+# or vendor name, a personal address or path, a credential, or a session id.
+# Scans staged additions, and the commit message with --message <file>.
+#
+#   preflight                     check staged changes
+#   preflight --message <file>    also check a commit message
+#
+# Install as a hook:  git config core.hooksPath .githooks
+set -uo pipefail
+
+MESSAGE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --message) MESSAGE="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) echo "preflight: unknown argument $1" >&2; exit 2 ;;
+  esac
+done
+
+# Names that identify who the work was for. Extend this list, never the
+# habit of remembering to look.
+CLIENTS='recovr|chift|digiteal|postgreen|codabox|yuki|scalingo'
+PERSONAL='/home/pablo|/Users/pablo|pablocm90@'
+CREDS='gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-|BEGIN [A-Z ]*PRIVATE KEY'
+SESSION='Claude-Session:|session_[A-Za-z0-9]{16,}'
+
+# This file and its tests spell the patterns out, so they cannot be scanned.
+is_self() {
+  case "$1" in bin/preflight|bin/test/preflight_test.sh) return 0 ;; *) return 1 ;; esac
+}
+
+# Reads text on stdin, prints one finding per line. No side effects, so it is
+# safe to call from inside a pipeline.
+check_text() {
+  local src="$1" text hit
+  text=$(cat)
+  [ -n "$text" ] || return 0
+  local spec var label pattern
+  for spec in "CLIENTS|client or vendor name" "PERSONAL|personal identifier" \
+              "CREDS|credential" "SESSION|session id"; do
+    var="${spec%%|*}"; label="${spec#*|}"
+    eval "pattern=\$$var"
+    hit=$(printf '%s\n' "$text" | grep -ioE "$pattern" | sort -u | head -3 | tr '\n' ' ')
+    [ -n "$hit" ] && printf '  %s — %s: %s\n' "$src" "$label" "${hit% }"
+  done
+  return 0
+}
+
+findings=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  is_self "$f" && continue
+  hit=$(git diff --cached -U0 -- "$f" | grep '^+' | grep -v '^+++' | check_text "$f")
+  [ -n "$hit" ] && findings="${findings}${hit}"$'\n'
+done < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null)
+
+if [ -n "$MESSAGE" ] && [ -f "$MESSAGE" ]; then
+  hit=$(grep -v '^#' "$MESSAGE" | check_text "commit message")
+  [ -n "$hit" ] && findings="${findings}${hit}"$'\n'
+fi
+
+if [ -n "${findings// /}" ] && [ -n "$(printf '%s' "$findings" | tr -d '[:space:]')" ]; then
+  echo "preflight: refusing — this repo is public." >&2
+  printf '%s' "$findings" >&2
+  echo "Fix the content, or extend bin/preflight if the match is a false positive." >&2
+  exit 1
+fi
+exit 0

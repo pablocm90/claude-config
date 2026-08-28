@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# claude-dev-status: PR/CI status for every repo + task worktree under a root.
+# Shows the checkout plus "interesting" worktrees (dirty, ahead/behind, or
+# with an open PR); idle worktrees are counted, not listed.
+# Runs as a loop (for a tmux pane); --once prints a single snapshot and exits.
+set -uo pipefail
+
+ROOT=""
+ONCE=0
+INTERVAL="${CLAUDE_DEV_STATUS_INTERVAL:-60}"
+for arg in "$@"; do
+  case "$arg" in
+    --once) ONCE=1 ;;
+    -*) ;;
+    *) ROOT="$arg" ;;
+  esac
+done
+# Panes created by claude-dev inherit CLAUDE_DEV_ROOT from the session env,
+# so the pane shows the whole workspace even when opened from a worktree.
+ROOT="${ROOT:-${CLAUDE_DEV_ROOT:-$PWD}}"
+ROOT="$(cd "$ROOT" && pwd)"
+
+BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
+YELLOW=$'\033[33m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
+
+# A dir counts as a repo if it has .git AND a remote (the workspace root is
+# a local-only git repo — skip it, but still scan its subdirs).
+repos() {
+  if [ -e "$ROOT/.git" ] && git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+    echo "$ROOT"
+  fi
+  for d in "$ROOT"/*/; do
+    [ -e "${d}.git" ] && git -C "${d%/}" remote get-url origin >/dev/null 2>&1 && echo "${d%/}"
+  done
+}
+
+# One gh call per repo → "branch<TAB>rendered PR line" per open PR.
+pr_lines() {
+  gh pr list --state open --limit 50 \
+    --json number,title,headRefName,isDraft,reviewDecision,statusCheckRollup 2>/dev/null \
+    --jq '
+      .[] | [
+        .headRefName,
+        (.number | tostring),
+        (.title | if length > 46 then .[:44] + "…" else . end),
+        (if .isDraft then "draft" else (.reviewDecision // "") end),
+        ([.statusCheckRollup[]? | select((.conclusion? // .state? // "") | test("SUCCESS|NEUTRAL|SKIPPED"))] | length | tostring),
+        ([.statusCheckRollup[]? | select((.conclusion? // .state? // "") | test("FAILURE|ERROR|TIMED_OUT|CANCELLED"))] | length | tostring),
+        ([.statusCheckRollup[]? | select(((.status? // "") | test("IN_PROGRESS|QUEUED|PENDING")) or ((.state? // "") == "PENDING"))] | length | tostring),
+        ([.statusCheckRollup[]? | select((.conclusion? // .state? // "") | test("FAILURE|ERROR|TIMED_OUT")) | (.name? // .context? // "?")] | join(","))
+      ] | @tsv' \
+    | while IFS=$'\t' read -r branch number title decision ok fail pending failnames; do
+        checks=""
+        [ "$ok" != "0" ] && checks+="${GREEN}${ok}✓${RESET} "
+        [ "$fail" != "0" ] && checks+="${RED}${fail}✗${RESET} "
+        [ "$pending" != "0" ] && checks+="${YELLOW}${pending}●${RESET} "
+        [ -z "$checks" ] && checks="${DIM}no checks${RESET} "
+        [ -n "$failnames" ] && checks+="${RED}[${failnames}]${RESET} "
+        review=""
+        case "$decision" in
+          APPROVED) review="${GREEN}approved${RESET}" ;;
+          CHANGES_REQUESTED) review="${RED}changes requested${RESET}" ;;
+          REVIEW_REQUIRED) review="${DIM}needs review${RESET}" ;;
+          draft) review="${DIM}draft${RESET}" ;;
+        esac
+        printf '%s\t      %s#%s%s %s  %s%s\n' \
+          "$branch" "$BOLD" "$number" "$RESET" "$title" "$checks" "$review"
+      done
+}
+
+render_repo() {
+  local repo="$1" prs dir label branch dirty ahead behind flags line hidden=0
+  declare -A pr_shown=()
+  prs=$(cd "$repo" && pr_lines)
+  printf '%s=== %s ===%s\n' "$CYAN" "$(basename "$repo")" "$RESET"
+
+  local dirs=("$repo") labels=("checkout")
+  if [ -d "$repo/.claude/worktrees" ]; then
+    for dir in "$repo"/.claude/worktrees/*/; do
+      [ -d "$dir" ] || continue
+      dirs+=("${dir%/}"); labels+=("wt:$(basename "$dir")")
+    done
+  fi
+
+  local i
+  for i in "${!dirs[@]}"; do
+    dir="${dirs[$i]}"; label="${labels[$i]}"
+    branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null) || continue
+    dirty=$(git -C "$dir" status --porcelain 2>/dev/null | wc -l)
+    if read -r behind ahead < <(git -C "$dir" rev-list --left-right --count '@{u}...HEAD' 2>/dev/null); then :; else behind=0; ahead=0; fi
+    line=$(printf '%s\n' "$prs" | awk -F'\t' -v b="$branch" '$1 == b {print $2; exit}')
+
+    if [ "$label" != "checkout" ] && [ "$dirty" = "0" ] && [ "${ahead:-0}" = "0" ] && [ "${behind:-0}" = "0" ] && [ -z "$line" ]; then
+      hidden=$((hidden + 1))
+      continue
+    fi
+
+    flags=""
+    [ "$dirty" != "0" ] && flags+=" ${YELLOW}±${dirty}${RESET}"
+    [ "${ahead:-0}" != "0" ] && flags+=" ${CYAN}↑${ahead}${RESET}"
+    [ "${behind:-0}" != "0" ] && flags+=" ${RED}↓${behind}${RESET}"
+    printf '  %s%-16s%s %s%s\n' "$DIM" "$label" "$RESET" "$branch" "$flags"
+    if [ -n "$line" ] && [ -z "${pr_shown[$branch]:-}" ]; then
+      printf '%s\n' "$line"
+      pr_shown[$branch]=1
+    fi
+  done
+
+  [ "$hidden" -gt 0 ] && printf '  %s(+%d idle worktrees)%s\n' "$DIM" "$hidden" "$RESET"
+  echo
+}
+
+snapshot() {
+  printf '%sPR / CI status%s  %s%s%s\n\n' "$BOLD" "$RESET" "$DIM" "$(date +%H:%M:%S)" "$RESET"
+  local repo
+  while IFS= read -r repo; do
+    render_repo "$repo"
+  done < <(repos)
+  printf '%srefresh %ss — claude-dev-status%s\n' "$DIM" "$INTERVAL" "$RESET"
+}
+
+if [ "$ONCE" -eq 1 ]; then
+  snapshot
+  exit 0
+fi
+
+while true; do
+  out="$(snapshot)"
+  clear
+  printf '%s\n' "$out"
+  sleep "$INTERVAL"
+done

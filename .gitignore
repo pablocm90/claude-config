@@ -1,0 +1,16 @@
+# Allowlist: version only the portable framework — everything a fresh machine
+# or a new project needs. Everything else here is runtime state, and the
+# per-project memory stores are deliberately local: they hold client-specific
+# engineering detail that must not leave this machine.
+/*
+!/.gitignore
+!/.githooks/
+!/docs/
+!/README.md
+!/CLAUDE.md
+!/settings.json
+!/skills/
+!/agents/
+!/commands/
+!/bin/
+!/dotfiles/

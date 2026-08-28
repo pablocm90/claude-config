@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Refuse commits that would publish something this repo must not carry.
+# Scans staged additions and this commit's message. Enable with:
+#   git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/bin/preflight" --message "$1"

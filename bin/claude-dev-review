@@ -1,0 +1,518 @@
+#!/usr/bin/env bash
+# claude-dev-review: review everything a task changed, in the terminal or HTML.
+#
+#   claude-dev-review <slug>                terminal review, task worktrees across repos
+#   claude-dev-review                       terminal review of the worktree containing $PWD
+#   claude-dev-review <slug> --stride       only the last commit (used by the auto-pop)
+#   claude-dev-review <slug> --html [--no-open]   self-contained HTML report instead
+#
+# Shows, per worktree: diffstat vs the base (origin's default branch, or the
+# previous commit with --stride), a reference map around the changed files
+# (madge + grep heuristics), and the full diff.
+# Every review opens with a Context block: for a stride, the note written by
+# `claude-dev ready --note` (falling back to the commit message); for a full
+# review, the commits in range.
+#   terminal (default): piped through delta — colour, syntax highlight, n/N nav.
+#   --stride:           narrows to HEAD~1..HEAD and the just-committed worktree.
+#   --html:             <workspace>/artifacts/review-<slug>.html (Mermaid graph,
+#                       collapsible per-file diffs), opened via xdg-open.
+set -uo pipefail
+
+# Reference heuristics live in a library so both this script and its tests can
+# reach them; resolve through the ~/.local/bin symlink to find it.
+# shellcheck source=lib/refs.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/refs.sh"
+
+ROOT="${CLAUDE_DEV_ROOT:-$PWD}"
+# Launched from inside a repo or worktree? Hoist to the workspace (the repo's
+# parent) when one exists — keeps output out of product repos and lets a slug
+# resolve across all sibling repos.
+top=$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)
+if [ -n "$top" ]; then
+  main="$top"
+  case "$top" in */.claude/worktrees/*) main="${top%%/.claude/worktrees/*}" ;; esac
+  parent=$(dirname "$main")
+  [ -f "$parent/CLAUDE.md" ] && ROOT="$parent"
+fi
+SLUG=""
+OPEN=1
+MODE=terminal
+STRIDE=0
+for arg in "$@"; do
+  case "$arg" in
+    --html) MODE=html ;;
+    --no-open) OPEN=0 ;;
+    --stride) STRIDE=1 ;;
+    -h|--help) awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; exit 0 ;;
+    -*) echo "claude-dev-review: unknown flag $arg" >&2; exit 1 ;;
+    *) SLUG="$arg" ;;
+  esac
+done
+
+BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
+YELLOW=$'\033[33m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
+
+list_repos() {
+  local root="$1" d
+  if [ -e "$root/.git" ] && git -C "$root" remote get-url origin >/dev/null 2>&1; then
+    echo "$root"
+  fi
+  for d in "$root"/*/; do
+    [ -e "${d}.git" ] && git -C "${d%/}" remote get-url origin >/dev/null 2>&1 && echo "${d%/}"
+  done
+}
+
+WTS=()
+if [ -n "$SLUG" ]; then
+  while IFS= read -r r; do
+    [ -d "$r/.claude/worktrees/$SLUG" ] && WTS+=("$r/.claude/worktrees/$SLUG")
+  done < <(list_repos "$ROOT")
+  [ "${#WTS[@]}" -gt 0 ] || { echo "no worktrees named '$SLUG' under $ROOT" >&2; exit 1; }
+else
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a git repo and no slug given" >&2; exit 1; }
+  WTS=("$top")
+  SLUG=$(basename "$top")
+fi
+
+esc() { sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+
+mermaid_id() { printf '%s' "$1" | tr -c '[:alnum:]' '_'; }
+
+# Shared: a verified default branch ref (origin/HEAD symrefs go stale) --------
+resolve_default() {
+  local wt="$1" default cand
+  default=$(git -C "$wt" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+  for cand in "$default" origin/master origin/main; do
+    [ -n "$cand" ] && git -C "$wt" rev-parse --verify -q "$cand" >/dev/null 2>&1 && { printf '%s' "$cand"; return; }
+  done
+}
+
+# --stride reviews just the last commit. A stride is one concern in one repo
+# (mmmss: never bundle), so narrow to the repo that was just committed to.
+# Only candidates with local commits qualify: a HEAD reachable from the default
+# branch is merged upstream work, never a stride (stale worktrees park there).
+# Slug worktrees win over main checkouts (batch-branch flow commits there) so a
+# parallel task's main-checkout commit can't hijack this slug's review.
+stride_pick() {
+  local newest="" newest_ct=-1 wt default ct
+  for wt in "$@"; do
+    default=$(resolve_default "$wt")
+    [ -n "$default" ] || continue
+    git -C "$wt" merge-base --is-ancestor HEAD "$default" 2>/dev/null && continue
+    ct=$(git -C "$wt" log -1 --format=%ct HEAD 2>/dev/null || echo 0)
+    if [ "${ct:-0}" -gt "$newest_ct" ]; then newest_ct="$ct"; newest="$wt"; fi
+  done
+  [ -n "$newest" ] && printf '%s' "$newest"
+}
+
+if [ "$STRIDE" = 1 ]; then
+  pick=$(stride_pick "${WTS[@]}")
+  if [ -z "$pick" ]; then
+    # Batch-branch flow: the work may sit in a differently-named worktree (dir
+    # a9, branch a15, window a7) or the main checkout. Widen to checkouts in
+    # the slug's family — dir or branch containing the slug minus its last
+    # token. Never fall back to bare newest-HEAD across all checkouts: parallel
+    # tasks commit within seconds of each other, and showing a neighbour's
+    # commit is worse than admitting there is nothing to review.
+    mapfile -t cands < <(list_repos "$ROOT" | while IFS= read -r r; do
+      git -C "$r" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}'
+    done)
+    fam="${SLUG%-*}"
+    fam_cands=()
+    for c in "${cands[@]}"; do
+      b=$(git -C "$c" rev-parse --abbrev-ref HEAD 2>/dev/null)
+      case "$(basename "$c") $b" in *"$fam"*) fam_cands+=("$c") ;; esac
+    done
+    pick=$(stride_pick "${fam_cands[@]}")
+  fi
+  if [ -z "$pick" ]; then
+    echo "nothing to review for '$SLUG' — no local commits in its worktrees or same-family checkouts."
+    [ -t 0 ] && sleep 2
+    exit 0
+  fi
+  WTS=("$pick")
+fi
+
+# Terminal reference map: changed file → what references it, and what it imports.
+# Uses fast grep heuristics only — madge builds the whole TS graph (~30s) and
+# would stall the pager; the precise madge graph stays in the --html report.
+terminal_ref_map() {
+  local wt="$1" base="$2" head="${3:-}" f deps fwd any=0 d
+  local changed
+  mapfile -t changed < <(git -C "$wt" diff --name-only "$base" ${head:+"$head"}
+    [ -z "$head" ] && git -C "$wt" ls-files --others --exclude-standard)
+  for f in "${changed[@]}"; do
+    [ -n "$f" ] || continue
+    deps=$(dependents_for "$wt" "$f")
+    fwd=$(imports_for "$wt" "$f")
+    [ -n "$deps$fwd" ] || continue
+    any=1
+    printf '  %s%s%s\n' "$CYAN" "$f" "$RESET"
+    while IFS= read -r d; do [ -n "$d" ] && printf '      %sreferenced by%s %s\n' "$DIM" "$RESET" "$d"; done <<< "$deps"
+    while IFS= read -r d; do [ -n "$d" ] && printf '      %simports%s       %s\n' "$DIM" "$RESET" "$d"; done <<< "$fwd"
+  done
+  [ "$any" -eq 0 ] && printf '  %s(no references found — see --html for the madge graph)%s\n' "$DIM" "$RESET"
+}
+
+# The paragraph that says what the work was for -------------------------------
+# A diff answers "what changed"; the reviewer arrives needing "why, and what
+# should I look at". For a stride that answer is written at the boundary by
+# `claude-dev ready --note` (see .claude/reviews/<slug>.context); the commit
+# message is the fallback, so a stride signalled without a note still shows its
+# author's own words. A full review spans many strides and has no single
+# subject, so it lists the commits in range instead.
+#
+# A stride note is headline-first, then 'Label: text' lines (see the mmmss-stride
+# skill). render_note bolds the headline and hangs each label in its own column;
+# anything else in the file just wraps, so a legacy prose note still reads.
+
+# Wrap to the popup's width, indented under the heading. fold -s breaks on
+# spaces and leaves existing newlines alone, so bullet lists survive; fmt would
+# reflow them into a blob.
+ctx_width() {
+  local w
+  w=$(tput cols 2>/dev/null </dev/tty) || w=""
+  case "$w" in ''|*[!0-9]*) w=80 ;; esac
+  [ "$w" -gt 80 ] && w=80
+  [ "$w" -lt 40 ] && w=40
+  printf '%s' "$w"
+}
+
+indent_wrap() { fold -s -w "$(( $(ctx_width) - 4 ))" | sed 's/[[:space:]]*$//; /./s/^/    /'; }
+
+# A stride note is read in seconds, before the diff: the first line is a
+# headline the reviewer can stop after, and the rest is labelled so the eye
+# lands on "Look at" without reading "Why". Labels are bolded and hung in their
+# own column; a line matching none of them just wraps, so an older prose note
+# still renders whole.
+CTX_LABELS='Where|Why|Look at|Not done|Green'
+CTX_LABEL_W=10
+
+render_note() {
+  local body_w label_w line label rest first=1 blank=1
+  body_w=$(( $(ctx_width) - 4 ))
+  label_w=$(( body_w - CTX_LABEL_W ))
+  [ "$label_w" -lt 20 ] && label_w=20
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -z "${line//[[:space:]]/}" ]; then
+      [ "$blank" = 1 ] || { printf '\n'; blank=1; }
+      continue
+    fi
+    # Only a genuinely short opener is a headline; a legacy one-paragraph note
+    # must not render as a wall of bold.
+    if [ "$first" = 1 ] && [ "${#line}" -le 120 ] && ! [[ "$line" =~ ^($CTX_LABELS): ]]; then
+      first=0
+      printf '%s\n' "$line" | fold -s -w "$body_w" \
+        | sed "s/[[:space:]]*\$//; s/^/    ${BOLD}/; s/\$/${RESET}/"
+      printf '\n'
+      blank=1
+      continue
+    fi
+    if [[ "$line" =~ ^($CTX_LABELS):[[:space:]]*(.*)$ ]]; then
+      label="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+      printf '%s\n' "$rest" | fold -s -w "$label_w" | sed 's/[[:space:]]*$//' | {
+        local seg n=0
+        while IFS= read -r seg; do
+          if [ "$n" = 0 ]; then
+            printf '    %s%-*s%s%s\n' "$BOLD" "$CTX_LABEL_W" "$label" "$RESET" "$seg"
+          else
+            printf '    %*s%s\n' "$CTX_LABEL_W" "" "$seg"
+          fi
+          n=1
+        done
+      }
+      blank=0
+      continue
+    fi
+    first=0
+    blank=0
+    printf '%s\n' "$line" | indent_wrap
+  done
+}
+
+# Commit subject + body, minus the machine trailers and trailing blank lines.
+commit_context() {
+  git -C "$1" log -1 --format='%s%n%n%b' HEAD 2>/dev/null \
+    | grep -vE '^(Co-Authored-By|Claude-Session|Signed-off-by):' \
+    | cat -s \
+    | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}'
+}
+
+print_context() {
+  local wt="$1" base="$2" note="$ROOT/.claude/reviews/$SLUG.context" body extra
+  printf '  %sContext%s' "$BOLD" "$RESET"
+  if [ "$STRIDE" = 1 ]; then
+    if [ -s "$note" ]; then
+      printf '\n'
+      render_note < "$note"
+      printf '\n'
+      return
+    fi
+    body=$(commit_context "$wt")
+    if [ -n "${body//[[:space:]]/}" ]; then
+      printf ' %s(from the commit message — no stride note)%s\n' "$DIM" "$RESET"
+      printf '%s\n' "$body" | indent_wrap
+    else
+      printf '\n    %s(none — write one with `claude-dev ready --note`)%s\n' "$DIM" "$RESET"
+    fi
+    printf '\n'
+    return
+  fi
+  if [ "${commits:-0}" -eq 0 ]; then
+    printf ' %s(no commits on this branch — working tree only)%s\n\n' "$DIM" "$RESET"
+    return
+  fi
+  printf ' %s(%s commit(s) since %s)%s\n' "$DIM" "$commits" "$base_label" "$RESET"
+  git -C "$wt" -c color.ui=always log --oneline --no-decorate "$base..HEAD" \
+    | head -12 | sed 's/^/    /'
+  extra=$(( commits > 12 ? commits - 12 : 0 ))
+  [ "$extra" -gt 0 ] && printf '    %s… %s more%s\n' "$DIM" "$extra" "$RESET"
+  printf '\n'
+}
+
+# Terminal review: one stream per worktree (header + stats + reference map +
+# raw git diff) piped to delta, which pages it with colour + syntax highlight.
+# A stride reviews the commit alone (base..HEAD); the full review also shows
+# working-tree changes and untracked files — a main checkout's unrelated dirty
+# state must not pollute a stride diff.
+render_terminal() {
+  local wt repo repo_name branch default base base_label commits dirty head
+  head=""; [ "$STRIDE" = 1 ] && head=HEAD
+  for wt in "${WTS[@]}"; do
+    base=""; base_label=""
+    repo="${wt%/.claude/worktrees/*}"; repo_name=$(basename "$repo")
+    [ "$repo" = "$wt" ] && repo_name=$(basename "$wt")
+    branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ "$STRIDE" = 1 ]; then
+      base=$(git -C "$wt" rev-parse -q --verify 'HEAD~1' 2>/dev/null)
+      base_label="stride (HEAD~1)"
+    fi
+    if [ -z "${base:-}" ]; then
+      default=$(resolve_default "$wt")
+      base=$(git -C "$wt" merge-base "$default" HEAD 2>/dev/null)
+      base_label="$default"
+    fi
+    printf '\n%s━━━ %s ━━━%s  %s%s%s\n' "$BOLD$CYAN" "$repo_name" "$RESET" "$DIM" "$branch" "$RESET"
+    if [ -z "$base" ]; then
+      printf '  %scould not determine a base (default branch ref missing) — skipped.%s\n' "$DIM" "$RESET"
+      continue
+    fi
+    commits=$(git -C "$wt" log --oneline "$base..HEAD" | wc -l | tr -d ' ')
+    dirty=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
+    printf '  %sbase %s @ %s · %s commit(s) in range · %s dirty file(s)%s\n\n' \
+      "$DIM" "$base_label" "$(git -C "$wt" rev-parse --short "$base")" "$commits" "$dirty" "$RESET"
+    print_context "$wt" "$base"
+    git -C "$wt" -c color.ui=always diff --stat=100 "$base" ${head:+"$head"}
+    printf '\n%sReference map%s %s(madge + grep heuristics)%s\n' "$BOLD" "$RESET" "$DIM" "$RESET"
+    terminal_ref_map "$wt" "$base" "$head"
+    printf '\n'
+    git -C "$wt" diff "$base" ${head:+"$head"}
+    [ -n "$head" ] && continue
+    # untracked files, shown as additions (run inside wt for clean relative paths)
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      ( cd "$wt" && git diff --no-index -- /dev/null "$f" 2>/dev/null )
+    done < <(git -C "$wt" ls-files --others --exclude-standard)
+  done
+}
+
+# After the pager: capture a disposition so review feedback reaches Claude
+# without leaving the terminal. A note lands in .claude/reviews/<slug>.md (which
+# the UserPromptSubmit hook injects into Claude's next turn); approve/note clear
+# the ready flag, skip leaves it. Only prompts interactively (skipped when piped).
+# Stray input (mouse escapes, leftover pager keys) is drained first, and the
+# disposition is a single keypress — a and n act immediately, as the [a]/[n]
+# notation promises. Escape sequences are swallowed and anything else
+# re-prompts, so a mis-key can't silently drop a note behind display-popup's
+# instant -EE close.
+review_epilogue() {
+  [ -t 0 ] || return 0
+  local dir="$ROOT/.claude/reviews" ans note ts junk
+  mkdir -p "$dir"
+  while read -r -t 0.05 -N 1000 junk; do :; done
+  ts=$(date '+%Y-%m-%d %H:%M')
+  while :; do
+    printf '\n%sReview of %s%s — [a]pprove / [n]ote / Enter to skip: ' "$BOLD" "$SLUG" "$RESET"
+    IFS= read -r -N 1 ans || return 0
+    case "$ans" in
+      a|A)
+        printf '\n'
+        printf '## %s — approved\n\n' "$ts" >> "$dir/$SLUG.md"
+        rm -f "$dir/$SLUG.ready" "$dir/$SLUG.popped"; echo "approved."
+        sleep 1; return 0
+        ;;
+      n|N)
+        printf '\n%snote: %s' "$DIM" "$RESET"; IFS= read -r note
+        if [ -n "$note" ]; then
+          printf '## %s — note\n%s\n\n' "$ts" "$note" >> "$dir/$SLUG.md"
+          rm -f "$dir/$SLUG.ready" "$dir/$SLUG.popped"; echo "noted — reaches Claude on its next prompt."
+          sleep 1; return 0
+        fi
+        echo "empty — skipped."; return 0
+        ;;
+      $'\n'|$'\r') printf '\n'; return 0 ;;
+      $'\e') while read -r -t 0.05 -N 1 junk; do :; done ;;
+      *) printf '  %s— press a, n, or Enter%s\n' "$DIM" "$RESET" ;;
+    esac
+  done
+}
+
+if [ "$MODE" = terminal ]; then
+  # Mouse-wheel + line-key scrolling in the pager (space-to-page is clunky).
+  # -R keeps colour, --mouse forwards the wheel to less, --wheel-lines smooths it.
+  PAGER_CMD='less -R --mouse --wheel-lines=3'
+  if command -v delta >/dev/null 2>&1; then
+    render_terminal | DELTA_PAGER="$PAGER_CMD" delta
+  else
+    render_terminal | $PAGER_CMD
+  fi
+  review_epilogue
+  exit 0
+fi
+
+# HTML ----------------------------------------------------------------------
+
+OUTDIR="$ROOT/artifacts"
+mkdir -p "$OUTDIR"
+OUT="$OUTDIR/review-$SLUG.html"
+
+{
+cat <<'HEAD'
+<!doctype html><html><head><meta charset="utf-8">
+<title>task review</title>
+<style>
+  body { font: 14px/1.5 -apple-system, "Segoe UI", sans-serif; margin: 0; background: #0d1117; color: #c9d1d9; }
+  header { padding: 16px 24px; background: #161b22; border-bottom: 1px solid #30363d; position: sticky; top: 0; }
+  h1 { font-size: 18px; margin: 0; } h2 { color: #58a6ff; margin-top: 32px; }
+  main { padding: 8px 24px 64px; max-width: 1200px; margin: 0 auto; }
+  .stat { color: #8b949e; white-space: pre; overflow-x: auto; background: #161b22; padding: 12px; border-radius: 6px; }
+  details { margin: 6px 0; border: 1px solid #30363d; border-radius: 6px; }
+  summary { padding: 6px 12px; cursor: pointer; background: #161b22; font-family: monospace; }
+  summary .a { color: #3fb950; } summary .d { color: #f85149; }
+  pre.diff { margin: 0; padding: 8px 12px; overflow-x: auto; font-size: 12px; }
+  .add { color: #3fb950; } .del { color: #f85149; } .hunk { color: #58a6ff; }
+  table.deps { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.deps td, table.deps th { border: 1px solid #30363d; padding: 4px 10px; text-align: left; vertical-align: top; }
+  table.deps th { background: #161b22; }
+  .mono { font-family: monospace; } .dim { color: #8b949e; }
+  .mermaid { background: #161b22; border-radius: 6px; padding: 8px; margin: 12px 0; }
+</style>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "dark" });
+</script>
+</head><body>
+HEAD
+
+printf '<header><h1>Task review: %s <span class="dim">— %s</span></h1></header><main>\n' \
+  "$(printf '%s' "$SLUG" | esc)" "$(date '+%Y-%m-%d %H:%M')"
+
+for wt in "${WTS[@]}"; do
+  repo="${wt%/.claude/worktrees/*}"
+  repo_name=$(basename "$repo")
+  [ "$repo" = "$wt" ] && repo_name=$(basename "$wt")
+  branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  # origin/HEAD symrefs go stale (can point at deleted branches) — verify.
+  default=$(git -C "$wt" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+  for cand in "$default" origin/master origin/main; do
+    [ -n "$cand" ] && git -C "$wt" rev-parse --verify -q "$cand" >/dev/null 2>&1 && { default="$cand"; break; }
+  done
+  base=$(git -C "$wt" merge-base "$default" HEAD 2>/dev/null)
+  if [ -z "$base" ]; then
+    printf '<h2>%s</h2><p class="dim">could not determine a merge base (default branch ref missing) — skipped.</p>\n' "$(basename "$wt")"
+    continue
+  fi
+
+  printf '<h2>%s <span class="dim mono">%s (base: %s @ %s)</span></h2>\n' \
+    "$repo_name" "$branch" "$default" "$(git -C "$wt" rev-parse --short "$base")"
+
+  commits=$(git -C "$wt" log --oneline "$base..HEAD" | wc -l)
+  dirty=$(git -C "$wt" status --porcelain | wc -l)
+  printf '<p class="dim">%s commit(s) on branch, %s dirty file(s) in working tree.</p>\n' "$commits" "$dirty"
+
+  printf '<div class="stat">%s</div>\n' "$(git -C "$wt" diff --stat=110 "$base" | esc)"
+
+  # --- dependency map -------------------------------------------------------
+  # TS repos: one madge run gives the real module graph (tsconfig aliases
+  # resolved); grep stays as fallback for deleted files / non-madge repos.
+  madge_graph=""
+  if [ -x "$wt/node_modules/.bin/madge" ] && [ -d "$wt/src" ] && [ -f "$wt/tsconfig.json" ]; then
+    madge_graph=$(mktemp)
+    if ! (cd "$wt" && node_modules/.bin/madge --json --extensions ts,tsx --ts-config tsconfig.json src 2>/dev/null) > "$madge_graph" \
+       || ! jq -e 'length > 0' "$madge_graph" >/dev/null 2>&1; then
+      rm -f "$madge_graph"; madge_graph=""
+    fi
+  fi
+
+  mapfile -t changed < <(git -C "$wt" diff --name-only "$base"; git -C "$wt" ls-files --others --exclude-standard)
+  declare -A edges=()
+  rows=""
+  for f in "${changed[@]}"; do
+    [ -n "$f" ] || continue
+    deps=""; fwd=""
+    case "$f" in
+      src/*.ts|src/*.tsx)
+        key="${f#src/}"
+        if [ -n "$madge_graph" ] && jq -e --arg k "$key" 'has($k)' "$madge_graph" >/dev/null 2>&1; then
+          deps=$(jq -r --arg k "$key" 'to_entries[] | select(.value | index($k) != null) | "src/" + .key' "$madge_graph" | head -12)
+          fwd=$(jq -r --arg k "$key" '.[$k][]? | "src/" + .' "$madge_graph" | head -12)
+        fi ;;
+    esac
+    # Everything madge did not answer for — every other language, and TS when
+    # the graph is missing or does not know the file — falls to the greps.
+    if [ -z "$deps$fwd" ]; then
+      deps=$(dependents_for "$wt" "$f")
+      fwd=$(imports_for "$wt" "$f")
+    fi
+    if [ -n "$deps$fwd" ]; then
+      rows+="<tr><td class=\"mono\">$(printf '%s' "$f" | esc)</td><td class=\"mono\">$(printf '%s' "$deps" | esc | sed 's/$/<br>/')</td><td class=\"mono dim\">$(printf '%s' "$fwd" | esc | sed 's/$/<br>/')</td></tr>"
+      fid=$(mermaid_id "$f")
+      while IFS= read -r d; do
+        [ -n "$d" ] && edges["$(mermaid_id "$d")[\"$d\"] --> $fid"]=1
+      done <<< "$deps"
+      edges["$fid[\"$f\"]:::changed"]=1
+    fi
+  done
+  if [ -n "$rows" ]; then
+    map_src="grep heuristics"
+    [ -n "$madge_graph" ] && map_src="TS: madge module graph · Ruby: grep heuristics"
+    printf '<h3>Reference map <span class="dim">(%s — arrows point at changed files from code that references them)</span></h3>\n' "$map_src"
+    printf '<div class="mermaid">graph LR\nclassDef changed fill:#1f6feb,color:#fff\n'
+    printf '%s\n' "${!edges[@]}"
+    printf '</div>\n'
+    printf '<table class="deps"><tr><th>changed file</th><th>referenced by</th><th>imports (non-lib)</th></tr>%s</table>\n' "$rows"
+  fi
+
+  # --- per-file diffs -------------------------------------------------------
+  printf '<h3>Diffs</h3>\n'
+  git -C "$wt" diff "$base" | esc | awk '
+    /^diff --git/ {
+      if (open) print "</pre></details>";
+      file = $0; sub(/^diff --git a\//, "", file); sub(/ b\/.*/, "", file);
+      printf "<details><summary>%s</summary><pre class=\"diff\">\n", file;
+      open = 1; next
+    }
+    /^@@/   { printf "<span class=\"hunk\">%s</span>\n", $0; next }
+    /^\+/   { printf "<span class=\"add\">%s</span>\n", $0; next }
+    /^-/    { printf "<span class=\"del\">%s</span>\n", $0; next }
+    { print }
+    END { if (open) print "</pre></details>" }
+  '
+  # untracked files shown whole
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    printf '<details><summary>%s <span class="a">(new, untracked)</span></summary><pre class="diff"><span class="add">%s</span></pre></details>\n' \
+      "$(printf '%s' "$f" | esc)" "$(head -400 "$wt/$f" | esc)"
+  done < <(git -C "$wt" ls-files --others --exclude-standard)
+
+  [ -n "$madge_graph" ] && rm -f "$madge_graph"
+  unset edges
+done
+
+printf '</main></body></html>\n'
+} > "$OUT"
+
+echo "review written: $OUT"
+if [ "$OPEN" -eq 1 ] && command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$OUT" >/dev/null 2>&1 &
+fi

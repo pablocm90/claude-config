@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# statusline: how much Claude is left — plan windows, context, model — in one line.
+# Fed the session JSON on stdin by Claude Code (settings.json -> statusLine).
+set -uo pipefail
+
+input=$(cat)
+
+IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir branch pr transcript <<<"$(
+  printf '%s' "$input" | jq -r '
+    [ (.rate_limits.five_hour.used_percentage // "-"),
+      (.rate_limits.five_hour.resets_at       // "-"),
+      (.rate_limits.seven_day.used_percentage // "-"),
+      (.rate_limits.seven_day.resets_at       // "-"),
+      (.context_window.used_percentage        // "-"),
+      (.model.display_name // "-" | sub(" +\\(.*\\)$"; "")),
+      (.effort.level                          // "-"),
+      (if .thinking.enabled then "think" else "-" end),
+      (.workspace.git_worktree // (.workspace.current_dir // "/-" | split("/") | last)),
+      "-",
+      (.pr.number // "-"),
+      (.transcript_path // "-")
+    ] | @tsv' 2>/dev/null
+)"
+
+# A schema change that breaks the jq pass must not paint a garbage line.
+[ -z "${model:-}" ] && exit 0
+
+DIM=$'\033[2m'; RESET=$'\033[0m'
+CYAN=$'\033[36m'; YELLOW=$'\033[33m'; MAGENTA=$'\033[35m'; BLUE=$'\033[34m'
+
+# Daltonized-safe ramp: blue -> cyan -> yellow -> magenta. No red/green axis.
+hue() {
+  local p=${1%%.*}
+  if   [ "$p" -ge 90 ] 2>/dev/null; then printf '%s' "$MAGENTA"
+  elif [ "$p" -ge 70 ] 2>/dev/null; then printf '%s' "$YELLOW"
+  elif [ "$p" -ge 40 ] 2>/dev/null; then printf '%s' "$CYAN"
+  else printf '%s' "$BLUE"; fi
+}
+
+# 5-cell bar so the number has a shape next to it.
+bar() {
+  local p=${1%%.*} i filled out=""
+  filled=$(( (p * 5 + 99) / 100 ))
+  for ((i = 0; i < 5; i++)); do
+    if [ "$i" -lt "$filled" ]; then out+="▰"; else out+="▱"; fi
+  done
+  printf '%s' "$out"
+}
+
+# Seconds until reset -> 2h07 / 3d1h / 12m.
+until_reset() {
+  local now s d h m
+  now=$(date +%s); s=$(( $1 - now ))
+  [ "$s" -le 0 ] && { printf 'now'; return; }
+  d=$(( s / 86400 )); h=$(( s % 86400 / 3600 )); m=$(( s % 3600 / 60 ))
+  if   [ "$d" -gt 0 ]; then printf '%dd%dh' "$d" "$h"
+  elif [ "$h" -gt 0 ]; then printf '%dh%02d' "$h" "$m"
+  else printf '%dm' "$m"; fi
+}
+
+window() { # label pct resets_at
+  [ "$2" = "-" ] && return
+  local p=${2%%.*} c; c=$(hue "$p")
+  printf '%s%s%s %s%s %s%%%s' "$DIM" "$1" "$RESET" "$c" "$(bar "$p")" "$p" "$RESET"
+  [ "$3" != "-" ] && printf ' %s⟳%s%s' "$DIM" "$(until_reset "$3")" "$RESET"
+}
+
+# Seconds -> 45s / 2m14 / 1h05.
+fmt_dur() {
+  local s=$1
+  if   [ "$s" -ge 3600 ]; then printf '%dh%02d' $(( s / 3600 )) $(( s % 3600 / 60 ))
+  elif [ "$s" -ge 60 ]; then printf '%dm%02d' $(( s / 60 )) $(( s % 60 ))
+  else printf '%ds' "$s"; fi
+}
+
+dur_hue() { # same daltonized ramp, thresholds at 1m / 3m / 10m
+  if   [ "$1" -ge 600 ]; then printf '%s' "$MAGENTA"
+  elif [ "$1" -ge 180 ]; then printf '%s' "$YELLOW"
+  elif [ "$1" -ge  60 ]; then printf '%s' "$CYAN"
+  else printf '%s' "$BLUE"; fi
+}
+
+# Per-turn wall clock off the transcript: prompt -> last assistant message of the
+# same turn, so it stops growing once the turn ends and never counts idle time.
+# Prints "<last> <mean>" in seconds. Cached on transcript size.
+turn_times() {
+  local f=$1 cache cf size csize turns
+  [ -r "$f" ] || return
+  size=$(stat -c %s "$f" 2>/dev/null) || return
+  cache="${TMPDIR:-/tmp}/claude-statusline-$(id -u)"
+  cf="$cache/${f##*/}.turns"
+  if [ -r "$cf" ] && read -r csize turns < "$cf" && [ "$csize" = "$size" ]; then
+    printf '%s' "$turns"; return
+  fi
+  turns=$(jq -r '
+      select(.isSidechain != true)
+      | select(.type == "user" or .type == "assistant")
+      | [ .type,
+          (.promptId // "-"),
+          (if .toolUseResult then 1 else 0 end),
+          ((.timestamp // "") | sub("\\.[0-9]+Z$"; "Z")
+             | if . == "" then 0 else fromdateiso8601 end) ]
+      | @tsv' "$f" 2>/dev/null |
+    awk -F'\t' '
+      function close_turn() {
+        if (cur != "" && last_a > start) { d = last_a - start; n++; sum += d; last = d }
+      }
+      $1 == "user" && $3 == 0 && $2 != "-" && $2 != cur { close_turn(); cur = $2; start = $4; last_a = 0 }
+      $1 == "assistant" { last_a = $4 }
+      END { close_turn(); if (n > 0) printf "%d %d\n", last, sum / n }')
+  [ -z "$turns" ] && return
+  mkdir -p "$cache" && printf '%s %s\n' "$size" "$turns" > "$cf"
+  printf '%s' "$turns"
+}
+
+seg=()
+w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w")
+w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w")
+
+if [ "$ctx" != "-" ]; then
+  p=${ctx%%.*}
+  seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
+fi
+
+read -r t_last t_mean <<<"$(turn_times "$transcript")"
+if [ -n "${t_last:-}" ]; then
+  seg+=("$(printf '%s⏱%s %s%s%s %s⌀ %s%s' \
+    "$DIM" "$RESET" "$(dur_hue "$t_last")" "$(fmt_dur "$t_last")" "$RESET" \
+    "$DIM" "$(fmt_dur "$t_mean")" "$RESET")")
+fi
+
+tail_bits="$model"
+[ "$effort" != "-" ] && tail_bits+="·$effort"
+[ "$thinking" != "-" ] && tail_bits+="·think"
+seg+=("$(printf '%s%s%s' "$DIM" "$tail_bits" "$RESET")")
+
+loc="$dir"
+[ "$pr" != "-" ] && loc+=" #$pr"
+seg+=("$(printf '%s%s%s' "$DIM" "$loc" "$RESET")")
+
+out=""
+for s in "${seg[@]}"; do
+  [ -n "$out" ] && out+="$DIM │ $RESET"
+  out+="$s"
+done
+printf '%s\n' "$out"

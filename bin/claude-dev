@@ -1,0 +1,575 @@
+#!/usr/bin/env bash
+# claude-dev: tmux workspace wired for a Claude Code, task-per-window workflow.
+#
+#   claude-dev [--fresh] [folder]        hub session: claude | PR/CI status pane
+#   claude-dev task <slug> [repo ...]    add a task window: claude | shell per worktree
+#                                        on a worktree <repo>/.claude/worktrees/<slug>
+#   claude-dev done <slug>               remove task worktree(s) + window (refuses if dirty)
+#   claude-dev prune [--yes]             remove clean worktrees whose PR is merged/closed
+#   claude-dev ready [slug] [--note <text>|--note -]
+#                                        signal a green stride: flag + auto-pop its
+#                                        review; the note becomes the review's
+#                                        opening context paragraph
+#   claude-dev serve [slug] [--stop]     run this task's dev stack in its worktree
+#                                        panes, stopping every other one (a served
+#                                        task takes the workspace's ports over)
+#   claude-dev serve-cmd [path]          what serve would start there, and why it
+#                                        would fail if nothing is configured
+#   claude-dev serve-ports               the ports a served task takes over
+#   claude-dev ls                        list task windows and worktrees
+#
+# Repos can be named by fragment (be/backend, fe/frontend). Session root is
+# remembered in the tmux environment, so `task` works from inside the session.
+#
+# Serving is per-project: a repo that is neither Rails nor yarn puts its start
+# command on one line in <repo>/.claude/serve, and a workspace that does not
+# live on :3000/:4000 lists its ports in <root>/.claude/ports.
+set -euo pipefail
+
+CLAUDE_CMD="${CLAUDE_DEV_CLAUDE_CMD:-claude}"
+
+usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; }
+
+die() { echo "claude-dev: $*" >&2; exit 1; }
+
+sanitize() { printf '%s' "$1" | tr '. /' '___' | tr -cd '[:alnum:]_-'; }
+
+# Repos = ROOT itself if it is a git repo with a remote, plus immediate
+# subdirs that are (the workspace root may be a local-only git repo).
+list_repos() {
+  local root="$1" d
+  if [ -e "$root/.git" ] && git -C "$root" remote get-url origin >/dev/null 2>&1; then
+    echo "$root"
+  fi
+  for d in "$root"/*/; do
+    [ -e "${d}.git" ] && git -C "${d%/}" remote get-url origin >/dev/null 2>&1 && echo "${d%/}"
+  done
+}
+
+# If a dir is inside a repo (or task worktree) whose parent is a workspace
+# (marked by CLAUDE.md), hoist to the workspace; else return the dir as-is.
+hoist_root() {
+  local start="$1" top main parent
+  top=$(git -C "$start" rev-parse --show-toplevel 2>/dev/null) || { printf '%s' "$start"; return; }
+  main="$top"
+  case "$top" in */.claude/worktrees/*) main="${top%%/.claude/worktrees/*}" ;; esac
+  parent=$(dirname "$main")
+  if [ -f "$parent/CLAUDE.md" ]; then printf '%s' "$parent"; else printf '%s' "$start"; fi
+}
+
+resolve_root() {
+  local root="${CLAUDE_DEV_ROOT:-}"
+  if [ -z "$root" ] && [ -n "${TMUX:-}" ]; then
+    root=$(tmux show-environment CLAUDE_DEV_ROOT 2>/dev/null | cut -d= -f2- || true)
+  fi
+  printf '%s' "${root:-$(hoist_root "$PWD")}"
+}
+
+resolve_repo() {
+  local root="$1" frag="$2" r match=""
+  while IFS= read -r r; do
+    case "$(basename "$r")" in
+      *"$frag"*) match="$r"; break ;;
+    esac
+  done < <(list_repos "$root")
+  case "$frag" in
+    be) [ -z "$match" ] && match=$(list_repos "$root" | grep -m1 'backend' || true) ;;
+    fe) [ -z "$match" ] && match=$(list_repos "$root" | grep -m1 'frontend' || true) ;;
+  esac
+  [ -n "$match" ] || die "no repo matching '$frag' under $root"
+  printf '%s' "$match"
+}
+
+ensure_worktree() {
+  local repo="$1" slug="$2" branch="$3" wt base
+  wt="$repo/.claude/worktrees/$slug"
+  if [ -d "$wt" ]; then
+    printf '%s' "$wt"
+    return
+  fi
+  git -C "$repo" fetch -q origin
+  base=$(git -C "$repo" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/master)
+  mkdir -p "$repo/.claude/worktrees"
+  if git -C "$repo" show-ref --verify -q "refs/heads/$branch"; then
+    git -C "$repo" worktree add -q "$wt" "$branch"
+  elif git -C "$repo" show-ref --verify -q "refs/remotes/origin/$branch"; then
+    git -C "$repo" worktree add -q --track -b "$branch" "$wt" "origin/$branch"
+  else
+    git -C "$repo" worktree add -q -b "$branch" "$wt" "$base"
+  fi
+  if [ -f "$repo/package.json" ]; then
+    if [ -d "$repo/node_modules" ] && [ ! -e "$wt/node_modules" ]; then
+      ln -s "$repo/node_modules" "$wt/node_modules"
+    fi
+  fi
+  printf '%s' "$wt"
+}
+
+session_for() {
+  local name
+  name=$(sanitize "$(basename "$1")")
+  [ -n "$name" ] || die "could not derive a session name from $1"
+  printf '%s' "$name"
+}
+
+# The window (task slug) of the pane we're running in. Targets $TMUX_PANE so it
+# stays correct when the user is focused on another window (pipelined work / a
+# backgrounded agent) — a bare '#W' resolves the session's *active* window.
+current_window() {
+  [ -n "${TMUX:-}" ] || return 1
+  if [ -n "${TMUX_PANE:-}" ]; then
+    tmux display-message -p -t "$TMUX_PANE" '#W' 2>/dev/null
+  else
+    tmux display-message -p '#W' 2>/dev/null
+  fi
+}
+
+cmd_hub() {
+  local fresh=0 root=""
+  for arg in "$@"; do
+    case "$arg" in
+      --fresh|-f) fresh=1 ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown flag: $arg" ;;
+      *) root="$arg" ;;
+    esac
+  done
+  # No explicit folder: hoist out of a repo/worktree to its workspace.
+  root="${root:-$(hoist_root "$PWD")}"
+  root="$(cd "$root" && pwd)"
+  local session; session=$(session_for "$root")
+
+  if [ -n "${TMUX:-}" ]; then
+    die "already inside tmux — use 'claude-dev task <slug>' here, or detach first"
+  fi
+
+  if [ "$fresh" -eq 1 ] && tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+  fi
+  if tmux has-session -t "$session" 2>/dev/null; then
+    exec tmux attach -t "$session"
+  fi
+
+  [ -n "$(list_repos "$root")" ] || die "no git repos with remotes at $root (or in its immediate subdirs)"
+
+  # Hub = launchpad: PR/CI status on the left, a shell on the right for
+  # spawning task windows (claude-dev task <slug> [be|fe]).
+  tmux new-session -d -s "$session" -c "$root" -n hub
+  tmux set-environment -t "$session" CLAUDE_DEV_ROOT "$root"
+  # Deliver a stride's review when the human arrives at its window. Popups are
+  # client-scoped, so this is the only way a review can reach the window it
+  # belongs to without landing on whatever else is on screen.
+  tmux set-hook -t "$session" after-select-window \
+    'run-shell -b "claude-dev pop-review #{window_name} >/dev/null 2>&1 || true"'
+  tmux send-keys -t "$session:hub" "claude-dev-status '$root'" C-m
+  tmux split-window -h -l 45% -c "$root" -t "$session:hub"
+  tmux select-pane -t "$session:hub.2"
+  exec tmux attach -t "$session"
+}
+
+cmd_task() {
+  local slug="" branch="" frags=() arg
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --branch|-b) branch="$2"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown flag: $1" ;;
+      *) if [ -z "$slug" ]; then slug="$1"; else frags+=("$1"); fi ;;
+    esac
+    shift
+  done
+  [ -n "$slug" ] || die "usage: claude-dev task <slug> [repo ...]"
+  local window; window=$(sanitize "$slug")
+  branch="${branch:-$slug}"
+
+  local root; root=$(resolve_root)
+  local session; session=$(session_for "$root")
+  tmux has-session -t "$session" 2>/dev/null || die "no session '$session' — run claude-dev first"
+
+  if tmux list-windows -t "$session" -F '#W' | grep -qx "$window"; then
+    tmux select-window -t "$session:$window"
+    if [ -z "${TMUX:-}" ]; then exec tmux attach -t "$session"; fi
+    exit 0
+  fi
+
+  # Default: a task spans every repo in the workspace (worktree in each).
+  # Name repos (be/fe/fragment) to restrict a task to a subset.
+  local repos=()
+  if [ "${#frags[@]}" -gt 0 ]; then
+    for arg in "${frags[@]}"; do
+      repos+=("$(resolve_repo "$root" "$arg")")
+    done
+  else
+    mapfile -t repos < <(list_repos "$root")
+    [ "${#repos[@]}" -gt 0 ] || die "no repos found under $root"
+  fi
+
+  local wts=() r wt resumed=0
+  for r in "${repos[@]}"; do
+    if [ -d "$r/.claude/worktrees/$window" ]; then resumed=1; fi
+    wt=$(ensure_worktree "$r" "$window" "$branch")
+    echo "worktree: $wt (branch $branch)"
+    wts+=("$wt")
+  done
+
+  # Existing worktrees = resumed task: open the conversation picker so the
+  # task's previous Claude session can be picked up where it left off.
+  local claude_launch="$CLAUDE_CMD"
+  if [ "$resumed" -eq 1 ]; then claude_launch="$CLAUDE_CMD --resume"; fi
+
+  # Right column: a plain shell per worktree (cd'd in via -c), each ready for
+  # tests/standardrb/git by hand. lazygit stays one keystroke away — just type
+  # it in any of these panes.
+  tmux new-window -t "$session" -n "$window" -c "$root"
+  tmux send-keys -t "$session:$window" "$claude_launch" C-m
+  tmux split-window -h -l 40% -c "${wts[0]}" -t "$session:$window"
+  local extra
+  for extra in "${wts[@]:1}"; do
+    tmux split-window -v -c "$extra" -t "$session:$window"
+  done
+  tmux split-window -v -l 30% -c "$root" -t "$session:$window"
+  tmux select-pane -t "$session:$window.1"
+  tmux select-window -t "$session:$window"
+  if [ -z "${TMUX:-}" ]; then exec tmux attach -t "$session"; fi
+}
+
+cmd_done() {
+  local slug="${1:-}"; [ -n "$slug" ] || die "usage: claude-dev done <slug>"
+  local window; window=$(sanitize "$slug")
+  local root; root=$(resolve_root)
+  local session; session=$(session_for "$root")
+  local r wt wts=()
+  while IFS= read -r r; do
+    wt="$r/.claude/worktrees/$window"
+    [ -d "$wt" ] || continue
+    if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+      die "worktree $wt is dirty — commit or discard first (nothing removed)"
+    fi
+    wts+=("$wt")
+  done < <(list_repos "$root")
+  for wt in ${wts[@]+"${wts[@]}"}; do
+    git -C "${wt%/.claude/worktrees/*}" worktree remove "$wt"
+    echo "removed: $wt"
+  done
+  [ "${#wts[@]}" -gt 0 ] || echo "no worktree named '$window' found (removing window only)"
+  tmux kill-window -t "$session:$window" 2>/dev/null || true
+}
+
+cmd_prune() {
+  local yes=0; [ "${1:-}" = "--yes" ] && yes=1
+  local root; root=$(resolve_root)
+  local r wt branch merged candidates=()
+  while IFS= read -r r; do
+    [ -d "$r/.claude/worktrees" ] || continue
+    merged=$(cd "$r" && gh pr list --state merged --limit 200 --json headRefName --jq '.[].headRefName' 2>/dev/null || true)
+    closed=$(cd "$r" && gh pr list --state closed --limit 100 --json headRefName --jq '.[].headRefName' 2>/dev/null || true)
+    for wt in "$r"/.claude/worktrees/*/; do
+      [ -d "$wt" ] || continue
+      wt="${wt%/}"
+      [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] && continue
+      branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null) || continue
+      if printf '%s\n%s\n' "$merged" "$closed" | grep -qx "$branch" \
+         || git -C "$r" merge-base --is-ancestor "$branch" "origin/HEAD" 2>/dev/null; then
+        candidates+=("$wt")
+      fi
+    done
+  done < <(list_repos "$root")
+
+  if [ "${#candidates[@]}" -eq 0 ]; then echo "nothing to prune"; return; fi
+  printf 'prune candidates (clean + PR merged/closed):\n'
+  printf '  %s\n' "${candidates[@]}"
+  if [ "$yes" -ne 1 ]; then
+    printf 'remove all? [y/N] '
+    read -r reply
+    [ "$reply" = "y" ] || { echo "aborted"; return; }
+  fi
+  local repo
+  for wt in "${candidates[@]}"; do
+    repo="${wt%/.claude/worktrees/*}"
+    git -C "$repo" worktree remove "$wt" && echo "removed: $wt"
+  done
+}
+
+cmd_cycle() {
+  local slug="${1:-}"
+  local root; root=$(resolve_root)
+  local session; session=$(session_for "$root")
+  [ -n "$slug" ] || slug=$(current_window || true)
+  [ -n "$slug" ] || die "usage: claude-dev cycle <slug> (or run inside the task window)"
+  local window; window=$(sanitize "$slug")
+  [ "$window" != hub ] || die "refusing to cycle the hub window — run this from a task window"
+  tmux list-windows -t "$session" -F '#W' | grep -qx "$window" || die "no window '$window' in session '$session'"
+
+  local hf="$root/.claude/handoffs/$window.md" prompt
+  if [ -f "$hf" ]; then
+    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then give a one-line status plus the handoff's proposed next stride, and wait."
+  else
+    prompt="Fresh session for task '$window' (no handoff file found at $hf). Inspect the task worktrees' branch state and open PRs, propose the next stride, and wait."
+  fi
+  # One tmux invocation: respawn kills this script too when run from the
+  # target pane, so send-keys must already be queued server-side.
+  tmux respawn-pane -k -t "$session:$window.1" -c "$root" \; \
+    send-keys -t "$session:$window.1" "$CLAUDE_CMD $(printf '%q' "$prompt")" C-m
+  echo "cycled: fresh session in $session:$window"
+}
+
+# The stride note's budget (mmmss-stride step 3: 120 words, 25 per label) is
+# prose guidance, and prose drifts — every note written before this check
+# averaged 230 words, which is what made the review pane unreadable. Warn on
+# stderr, never block: the stride is already committed, and a note over budget
+# still beats no note. The agent runs `ready` from its own shell, so the
+# warning lands in front of the author while the note is still cheap to rewrite.
+ctx_budget_warn() {
+  local file="$1" total label words over="" line
+  total=$(wc -w < "$file" | tr -d ' ')
+  [ "${total:-0}" -gt 120 ] && over="whole note $total words (budget 120)"
+  while IFS= read -r line; do
+    case "$line" in
+      Where:*|Why:*|"Look at:"*|"Not done:"*|Green:*) ;;
+      *) continue ;;
+    esac
+    label="${line%%:*}"
+    words=$(printf '%s' "${line#*:}" | wc -w | tr -d ' ')
+    [ "${words:-0}" -gt 25 ] && over="${over:+$over; }$label $words words (budget 25)"
+  done < "$file"
+  [ -n "$over" ] && printf 'note over budget: %s — trim before the human reads it\n' "$over" >&2
+  return 0
+}
+
+# Signal that a green stride is ready for review: drop a flag file and, when the
+# human is already looking at this task window, pop the review straight away.
+#
+# A popup is a property of the client, not of a window: fired while another
+# window is on screen it lands over that window's work, and a second one
+# replaces the first, destroying a review mid-note. So a stride signalled from
+# a window the human is not watching only arms the flag and says so on the
+# status line; pop_review delivers it when they switch to that window.
+cmd_ready() {
+  local slug="" note="" have_note=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --note)   have_note=1; note="${2:-}"; shift 2 || shift ;;
+      --note=*) have_note=1; note="${1#--note=}"; shift ;;
+      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -]" ;;
+      *)  slug="$1"; shift ;;
+    esac
+  done
+  [ "$note" = "-" ] && note=$(cat)
+  local root; root=$(resolve_root)
+  [ -n "$slug" ] || slug=$(current_window || true)
+  [ -n "$slug" ] || die "usage: claude-dev ready <slug> (or run inside the task window)"
+  local window; window=$(sanitize "$slug")
+  local dir="$root/.claude/reviews"
+  mkdir -p "$dir"
+  : > "$dir/$window.ready"
+  # A previous review may have been popped and skipped; this is a new stride.
+  rm -f "$dir/$window.popped"
+  # The context paragraph the review pane opens with. Written fresh per stride,
+  # and *removed* when this stride ships without one — a note left over from the
+  # previous stride would describe the wrong diff, which is worse than no note.
+  if [ "$have_note" = 1 ] && [ -n "${note//[[:space:]]/}" ]; then
+    printf '%s\n' "$note" > "$dir/$window.context"
+    ctx_budget_warn "$dir/$window.context"
+  else
+    rm -f "$dir/$window.context"
+  fi
+  echo "signalled review for '$window'"
+  [ -n "${TMUX:-}" ] || return 0
+  local session; session=$(session_for "$root")
+  if [ "$(tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null)" = "$window" ]; then
+    cmd_pop_review "$window"
+  else
+    tmux display-message -t "$session" "review ready in '$window'" 2>/dev/null || true
+  fi
+}
+
+# Deliver a window's pending review, once. Called by cmd_ready when the window
+# is already on screen, and by the after-select-window hook when the human
+# switches to a window holding an armed flag. Exits 1 when nothing is due, so
+# the hook stays silent on every ordinary window switch.
+cmd_pop_review() {
+  local window="${1:-}"
+  local root; root=$(resolve_root)
+  [ -n "$window" ] || window=$(current_window || true)
+  [ -n "$window" ] || return 1
+  local dir="$root/.claude/reviews"
+  [ -f "$dir/$window.ready" ] || return 1
+  [ -f "$dir/$window.popped" ] && return 1
+  : > "$dir/$window.popped"
+  [ -n "${TMUX:-}" ] || return 0
+  # run-shell -b fires the popup server-side so this returns at once and never
+  # blocks the caller (Claude's turn, or the window switch) on the modal popup.
+  tmux run-shell -b "tmux display-popup -EE -w 90% -h 90% 'claude-dev review $window --stride || true'" 2>/dev/null || true
+}
+
+# Serve configuration ---------------------------------------------------------
+# What a task serves, and which ports a served task owns exclusively, are
+# per-project facts. Detection covers the zero-config case; a project that is
+# neither Rails nor yarn writes the answer down instead:
+#   <repo>/.claude/serve   one shell command — what this repo's server needs
+#   <root>/.claude/ports   the ports a served task takes over workspace-wide
+first_line() {
+  [ -f "$1" ] || return 1
+  local line
+  line=$(grep -m1 -vE '^[[:space:]]*(#|$)' "$1") || return 1
+  printf '%s' "$line"
+}
+
+# A pane sits in the worktree, but the command was configured once in the repo
+# the worktree was cut from, so resolve through to the checkout that owns it.
+main_repo_for() {
+  case "$1" in
+    */.claude/worktrees/*) printf '%s' "${1%%/.claude/worktrees/*}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+serve_cmd() {
+  local path="$1" f
+  for f in "$path/.claude/serve" "$(main_repo_for "$path")/.claude/serve"; do
+    first_line "$f" && return 0
+  done
+  [ -x "$path/bin/rails" ] && { printf '%s' "bin/rails s"; return 0; }
+  [ -f "$path/package.json" ] && { printf '%s' "yarn start"; return 0; }
+  return 1
+}
+
+serve_ports() {
+  local f="$1/.claude/ports" ports=""
+  if [ -f "$f" ]; then
+    ports=$(sed 's/#.*//' "$f" | tr -cs '0-9' ' ' | sed 's/^ //; s/ $//')
+  fi
+  printf '%s' "${ports:-3000 4000}"
+}
+
+cmd_serve_cmd() {
+  local path="${1:-$PWD}" c
+  c=$(serve_cmd "$path") ||
+    die "nothing to serve in $path — put the start command on one line in <repo>/.claude/serve"
+  printf '%s\n' "$c"
+}
+
+cmd_serve_ports() { printf '%s\n' "$(serve_ports "$(resolve_root)")"; }
+
+# Run a task's dev stack in its worktree panes, and stop every other one:
+# ports 3000/4000 are workspace-global, so serving one task means stopping
+# the rest. Pressing the key in the window that is already serving restarts it.
+cmd_serve() {
+  local slug="" stop_only=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --stop) stop_only=1 ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "usage: claude-dev serve [slug] [--stop]" ;;
+      *) slug="$1" ;;
+    esac
+    shift
+  done
+  local root; root=$(resolve_root)
+  local ports; ports=$(serve_ports "$root")
+  local session; session=$(session_for "$root")
+  [ -n "$slug" ] || slug=$(current_window || true)
+  [ -n "$slug" ] || die "usage: claude-dev serve <slug> (or run inside the task window)"
+  local window; window=$(sanitize "$slug")
+  [ "$window" != hub ] || die "the hub has no worktrees to serve"
+
+  # C-c rather than respawn-pane: the pane keeps its shell and the dying
+  # server's backtrace, which is usually why you switched worktrees at all.
+  local id
+  while IFS= read -r id; do tmux send-keys -t "$id" C-c; done < <(
+    tmux list-panes -a -F '#{pane_id}	#{pane_current_command}	#{pane_current_path}' |
+      awk -F'\t' '$2 ~ /^(puma|ruby|node|vite|sidekiq|bundle|rails)$/ &&
+                  $3 ~ /\/\.claude\/worktrees\// { print $1 }'
+  )
+  # Backstop for a wedged server, or one started outside tmux. Only the ports
+  # this workspace claims — other projects' servers are none of our business.
+  local port i
+  for port in $ports; do
+    for i in $(seq 12); do
+      fuser -s "$port/tcp" 2>/dev/null || break
+      [ "$i" -eq 12 ] && fuser -sk "$port/tcp" 2>/dev/null
+      sleep 0.5
+    done
+  done
+  if [ "$stop_only" -eq 1 ]; then echo "servers stopped"; return; fi
+
+  # Target panes by path, never by index: a task scoped to one repo
+  # (claude-dev task <slug> be) has no frontend pane at position 3.
+  local path cmd start started=0
+  while IFS=$'\t' read -r id path cmd; do
+    case "$cmd" in zsh|bash|sh|fish) ;; *) continue ;; esac
+    case "$path" in */.claude/worktrees/"$window"|*/.claude/worktrees/"$window"/*) ;; *) continue ;; esac
+    start=$(serve_cmd "$path") || continue
+    tmux send-keys -t "$id" "$start" C-m; started=1
+  done < <(tmux list-panes -t "$session:$window" \
+             -F '#{pane_id}	#{pane_current_path}	#{pane_current_command}')
+
+  [ "$started" -eq 1 ] ||
+    die "nothing started in '$window' — no idle worktree shell, or no start command (claude-dev serve-cmd)"
+  tmux display-message -t "$session" "serving '$window' -> $(printf '%s' "$ports" | sed 's/[0-9][0-9]*/:&/g')"
+}
+
+# Which task window holds :3000, published as the @serving user option for the
+# status line to render. Resolves the port's actual owner and walks up to the
+# pane that spawned it: matching on pane_current_command would light the button
+# green for a pane merely running the test suite, which is `ruby` too.
+# Runs from #() on every status redraw, so it stays to a few cheap calls.
+cmd_serving() {
+  local refresh=0
+  [ "${1:-}" = "--refresh" ] && refresh=1
+  local pid win="" panes i
+  local main_port; main_port=$(serve_ports "$(resolve_root)" | awk '{print $1}')
+  pid=$(fuser "$main_port/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -m1 -E '^[0-9]+$') || pid=""
+  if [ -n "$pid" ]; then
+    panes=$(tmux list-panes -a -F '#{pane_pid} #{window_name}' 2>/dev/null) || panes=""
+    for i in $(seq 12); do
+      [ -n "$pid" ] && [ "$pid" != 1 ] || break
+      win=$(printf '%s\n' "$panes" | awk -v p="$pid" '$1 == p { print $2; exit }')
+      [ -n "$win" ] && break
+      pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') || pid=""
+    done
+  fi
+  # --refresh publishes and prints nothing: the status line reads @serving
+  # through ordinary format conditionals rather than this command's output.
+  if [ "$refresh" -eq 1 ]; then
+    tmux set -gq @serving "$win" 2>/dev/null || true
+    return 0
+  fi
+  [ -n "$win" ] && printf '%s\n' "$win"
+  return 0
+}
+
+cmd_ls() {
+  local root; root=$(resolve_root)
+  local session; session=$(session_for "$root")
+  if tmux has-session -t "$session" 2>/dev/null; then
+    echo "windows ($session):"
+    tmux list-windows -t "$session" -F '  #I:#W'
+  else
+    echo "no tmux session '$session'"
+  fi
+  echo "worktrees:"
+  local r wt
+  while IFS= read -r r; do
+    for wt in "$r"/.claude/worktrees/*/; do
+      [ -d "$wt" ] || continue
+      printf '  %s  (%s)\n' "${wt%/}" "$(git -C "${wt%/}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+    done
+  done < <(list_repos "$root")
+}
+
+case "${1:-}" in
+  task)   shift; cmd_task "$@" ;;
+  done)   shift; cmd_done "$@" ;;
+  prune)  shift; cmd_prune "$@" ;;
+  cycle)  shift; cmd_cycle "$@" ;;
+  ready)  shift; cmd_ready "$@" ;;
+  pop-review) shift; cmd_pop_review "$@" ;;
+  serve)  shift; cmd_serve "$@" ;;
+  serving) shift; cmd_serving "$@" ;;
+  serve-cmd) shift; cmd_serve_cmd "$@" ;;
+  serve-ports) shift; cmd_serve_ports "$@" ;;
+  ls)     shift; cmd_ls "$@" ;;
+  review) shift; CLAUDE_DEV_ROOT="$(resolve_root)" exec claude-dev-review "$@" ;;
+  *)      cmd_hub "$@" ;;
+esac

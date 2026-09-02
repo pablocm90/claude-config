@@ -73,7 +73,27 @@ tmux_config() {
     printf '    add ours on top of it:  source %s\n' "$target"
 }
 
+# settings.json turns some skills off. That is a preference, not a wiring
+# fault, so this states it rather than counting it against the machine — but
+# it does state it, because nothing else announces that a skill will not load.
+skills_off() {
+  local settings="$ROOT/settings.json" off
+  printf 'settings: %s\n' "$settings"
+  if [ ! -f "$settings" ]; then
+    warn 'skills' 'no settings.json in this checkout'
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    warn 'skills' 'cannot read them — jq is not installed'
+    return 0
+  fi
+  off=$(jq -r '(.skillOverrides // {}) | to_entries
+    | map(select(.value == "off") | .key) | join(" ")' "$settings")
+  ok 'skills off' "${off:-none}"
+}
+
 printf 'checkout: %s\n' "$ROOT"
 commit_guard
 tools_on_path
 tmux_config
+skills_off

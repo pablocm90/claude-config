@@ -22,6 +22,9 @@ assert_silent_about() {
 assert_eq() {
   [ "$2" = "$3" ] || { echo "FAIL: $1 — expected '$3', got '$2'"; fails=$((fails + 1)); }
 }
+assert_status() {
+  [ "$2" = "$3" ] || { echo "FAIL: $1 — expected exit $3, got $2"; fails=$((fails + 1)); }
+}
 
 tmp=$(mktemp -d)
 
@@ -36,6 +39,7 @@ machine() {
   for t in claude-dev claude-dev-review claude-dev-status; do
     printf '#!/bin/sh\n' > "$m/checkout/bin/$t"
   done
+  printf '{ "skillOverrides": { "diagrams": "off" } }\n' > "$m/checkout/settings.json"
   git init -q "$m/checkout"
   printf '%s' "$m"
 }
@@ -125,6 +129,45 @@ assert_silent_about "a link into their own dotfiles is not taken for ours" \
 assert_reports "it is named instead" "$(run "$sym")" "not ours"
 assert_eq "and still points at their file" \
   "$(readlink "$sym/home/.tmux.conf")" "$sym/home/dotfiles/tmux.conf"
+
+# --- skills turned off ------------------------------------------------------
+# settings.json ships with a few skills off. That is a preference rather than
+# a wiring fault, but it is invisible: nothing announces that `diagrams` will
+# not load, and the answer lives in a file you have no reason to open.
+sk=$(machine skills)
+printf '{ "skillOverrides": { "diagrams": "off", "testing": "on", "find-skills": "off" } }\n' \
+  > "$sk/checkout/settings.json"
+assert_reports "a skill turned off is named" "$(run "$sk")" "diagrams"
+assert_reports "and so is the next one" "$(run "$sk")" "find-skills"
+assert_silent_about "while one left on is not" "$(run "$sk")" "testing"
+
+# install is what runs on a fresh machine, so the reader it needs may not be
+# there yet. Saying so beats dying with half the machine wired.
+nojq="$tmp/nojq"; mkdir -p "$nojq"
+for c in bash git ln mkdir readlink rm cat sed; do
+  ln -s "$(command -v "$c")" "$nojq/$c" 2>/dev/null || true
+done
+nojq_out() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" PATH="$nojq" bash "$INSTALL" 2>&1); }
+nojq_status() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" PATH="$nojq" bash "$INSTALL" >/dev/null 2>&1; echo "$?"); }
+
+# Assert the message install means to print, not the word "jq" — bash's own
+# "jq: command not found" carries that too, and would pass with no guard here.
+assert_reports "a machine without jq is told the reader is missing" \
+  "$(nojq_out "$sk")" "jq is not installed"
+assert_status "and the run still finishes cleanly" "$(nojq_status "$sk")" 0
+assert_reports "having done everything that did not need jq" \
+  "$(nojq_out "$sk")" "tmux.conf"
+
+# Nothing turned off is a state worth naming, not an empty line to squint at.
+none=$(machine all-skills-on)
+printf '{ "skillOverrides": {} }\n' > "$none/checkout/settings.json"
+assert_reports "a machine with nothing turned off says so" "$(run "$none")" "none"
+
+# The same courtesy when the file itself is not there to read.
+ns=$(machine no-settings); rm "$ns/checkout/settings.json"
+assert_reports "a checkout with no settings.json says so" \
+  "$(run "$ns")" "no settings.json"
+assert_status "and still finishes cleanly" "$( (run "$ns" >/dev/null 2>&1); echo "$?" )" 0
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "install: all assertions passed"

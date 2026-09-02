@@ -106,6 +106,15 @@ printf '%s\n' \
 assert_contains "characterises the timer taking its colour from the last turn" \
   "$(raw "$(jq -cn --arg t "$tx2" '{transcript_path:$t}')")" "$(printf '\033[33m3m20')"
 
+# Two and a half minutes sits between the 1m and 3m thresholds, which is the
+# only place a move in either of them shows.
+tx3="$tmp/midband.jsonl"
+printf '%s\n' \
+  '{"type":"user","promptId":"p1","timestamp":"2026-01-01T00:00:00.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:02:30.000Z"}' > "$tx3"
+assert_contains "characterises the band between one and three minutes" \
+  "$(raw "$(jq -cn --arg t "$tx3" '{transcript_path:$t}')")" "$(printf '\033[36m2m30')"
+
 # --- the bar ----------------------------------------------------------------
 # Five cells, filled by rounding up, so any non-zero usage shows at least one.
 bar_at() { plain "{\"rate_limits\":{\"five_hour\":{\"used_percentage\":$1,\"resets_at\":0}}}"; }

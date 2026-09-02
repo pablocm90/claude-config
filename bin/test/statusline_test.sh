@@ -19,10 +19,11 @@ assert_contains() {
 
 tmp=$(mktemp -d)
 home="$tmp/home"; mkdir -p "$home/.claude"
+export TMPDIR="$tmp"   # the turn-time cache keys on the transcript
 
 # resets_at 0 is always past, so the countdown reads "now" and never drifts.
 session() {
-  jq -cn '{
+  jq -cn --arg tx "${1:--}" '{
     rate_limits: { five_hour: { used_percentage: 42, resets_at: 0 },
                    seven_day: { used_percentage: 8,  resets_at: 0 } },
     context_window: { used_percentage: 73 },
@@ -31,11 +32,12 @@ session() {
     thinking: { enabled: true },
     workspace: { current_dir: "/src/project" },
     pr: { number: 42 },
-    transcript_path: "-"
+    transcript_path: $tx
   }'
 }
 conf()  { printf '%b' "$1" > "$home/.claude/statusline.conf"; }
 noconf() { rm -f "$home/.claude/statusline.conf"; }
+raw()   { HOME="$home" bash "$SL" <<<"$(session "${1:-}")"; }
 plain() { HOME="$home" bash "$SL" <<<"$(session)" | sed 's/\x1b\[[0-9;]*m//g'; }
 
 # --- no config is the line as it has always been ----------------------------
@@ -69,6 +71,43 @@ assert_contains "an empty segments line falls back" "$(plain)" "ctx 73%"
 conf 'segments ctx cxt\n'
 assert_contains "an unknown segment is visible, not dropped" "$(plain)" "?cxt"
 assert_contains "and the segments around it still render" "$(plain)" "ctx 73%"
+
+# --- the colour ramp --------------------------------------------------------
+# Four colours, lowest band first. The default is daltonised on purpose, so a
+# machine that reads colour differently is exactly who needs to change it.
+conf 'segments ctx\nramp black red green yellow\n'
+assert_contains "the top-but-one band takes the third colour named" \
+  "$(raw)" "$(printf '\033[32m73%%')"
+
+# One palette serves both ramps: the percentage one and the turn timer's.
+tx="$tmp/spread.jsonl"
+printf '%s\n' \
+  '{"type":"user","promptId":"p1","timestamp":"2026-01-01T00:00:00.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:00:10.000Z"}' \
+  '{"type":"user","promptId":"p2","timestamp":"2026-01-01T00:01:40.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:05:00.000Z"}' > "$tx"
+conf 'segments turns\nramp black red green yellow\n'
+assert_contains "and the turn timer draws from the same four" \
+  "$(raw "$tx")" "$(printf '\033[32m3m20')"
+
+# A ramp that cannot be read leaves the default standing rather than painting
+# something arbitrary — the whole ramp reverting is what makes it noticeable.
+conf 'segments ctx\nramp black red green\n'
+assert_contains "three colours is not a ramp" "$(raw)" "$(printf '\033[33m73%%')"
+conf 'segments ctx\nramp black red green chartreuse\n'
+assert_contains "nor is one naming a colour nothing knows" \
+  "$(raw)" "$(printf '\033[33m73%%')"
+
+conf 'segments ctx\nramp black red green yellow chartreuse\n'
+assert_contains "nor is one naming five, four of which are real" \
+  "$(raw)" "$(printf '\033[33m73%%')"
+
+# A directive is matched whole. Reading the first line that merely starts with
+# a known name would hand the ramp whatever some future directive happens to
+# say, which is the failure that only shows up long after it is introduced.
+conf 'ramping black red green yellow\nsegments ctx\n'
+assert_contains "a longer directive name is not the directive" \
+  "$(raw)" "$(printf '\033[33m73%%')"
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "statusline: all assertions passed"

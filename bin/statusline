@@ -26,16 +26,31 @@ IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir 
 [ -z "${model:-}" ] && exit 0
 
 DIM=$'\033[2m'; RESET=$'\033[0m'
-CYAN=$'\033[36m'; YELLOW=$'\033[33m'; MAGENTA=$'\033[35m'; BLUE=$'\033[34m'
 
-# Daltonized-safe ramp: blue -> cyan -> yellow -> magenta. No red/green axis.
-hue() {
-  local p=${1%%.*}
-  if   [ "$p" -ge 90 ] 2>/dev/null; then printf '%s' "$MAGENTA"
-  elif [ "$p" -ge 70 ] 2>/dev/null; then printf '%s' "$YELLOW"
-  elif [ "$p" -ge 40 ] 2>/dev/null; then printf '%s' "$CYAN"
-  else printf '%s' "$BLUE"; fi
+# Four colours, lowest band first. The default is daltonised: blue → cyan →
+# yellow → magenta, deliberately with no red/green axis. A machine that reads
+# colour differently names its own four in statusline.conf, and both ramps
+# below draw from them — one palette, two sets of thresholds.
+RAMP=(34 36 33 35)
+
+colour_code() {
+  case "$1" in
+    black) printf 30 ;; red)     printf 31 ;; green) printf 32 ;; yellow) printf 33 ;;
+    blue)  printf 34 ;; magenta) printf 35 ;; cyan)  printf 36 ;; white)  printf 37 ;;
+    *) return 1 ;;
+  esac
 }
+
+# Which of the four bands a value falls in. A value that is not a number sinks
+# to the lowest band rather than colouring the line by accident.
+band() { # value low mid high
+  if   [ "$1" -ge "$4" ] 2>/dev/null; then printf 3
+  elif [ "$1" -ge "$3" ] 2>/dev/null; then printf 2
+  elif [ "$1" -ge "$2" ] 2>/dev/null; then printf 1
+  else printf 0; fi
+}
+
+hue() { printf '\033[%sm' "${RAMP[$(band "${1%%.*}" 40 70 90)]}"; }
 
 # 5-cell bar so the number has a shape next to it.
 bar() {
@@ -73,12 +88,8 @@ fmt_dur() {
   else printf '%ds' "$s"; fi
 }
 
-dur_hue() { # same daltonized ramp, thresholds at 1m / 3m / 10m
-  if   [ "$1" -ge 600 ]; then printf '%s' "$MAGENTA"
-  elif [ "$1" -ge 180 ]; then printf '%s' "$YELLOW"
-  elif [ "$1" -ge  60 ]; then printf '%s' "$CYAN"
-  else printf '%s' "$BLUE"; fi
-}
+# The same four colours, banded by 1m / 3m / 10m instead.
+dur_hue() { printf '\033[%sm' "${RAMP[$(band "$1" 60 180 600)]}"; }
 
 # Per-turn wall clock off the transcript: prompt -> last assistant message of the
 # same turn, so it stops growing once the turn ends and never counts idle time.
@@ -120,10 +131,22 @@ turn_times() {
 # statusline is indistinguishable from a broken one.
 SEGMENTS='5h 7d ctx turns model where'
 conf="$HOME/.claude/statusline.conf"
+directive() { sed 's/#.*//' "$conf" | awk -v k="$1" '$1 == k { $1 = ""; sub(/^ +/, ""); print; exit }'; }
+
 if [ -r "$conf" ]; then
-  configured=$(sed 's/#.*//' "$conf" |
-    awk '$1 == "segments" { $1 = ""; sub(/^ +/, ""); print; exit }')
+  configured=$(directive segments)
   [ -n "$configured" ] && SEGMENTS="$configured"
+
+  # Four names or none: a ramp that cannot be read in full leaves the default
+  # standing, so a typo shows up as nothing changing rather than as one band
+  # quietly painted the wrong colour.
+  configured=$(directive ramp)
+  if [ -n "$configured" ]; then
+    read -r -a names <<<"$configured"
+    codes=()
+    for n in "${names[@]}"; do c=$(colour_code "$n") && codes+=("$c"); done
+    [ "${#names[@]}" -eq 4 ] && [ "${#codes[@]}" -eq 4 ] && RAMP=("${codes[@]}")
+  fi
 fi
 
 seg=()

@@ -67,6 +67,36 @@ settings file Claude Code reads — there is no user-level
 diff to commit or leave dirty, and machines diverge in git rather than
 silently.
 
+The statusline is per-machine too, and unlike the skills it answers to nothing
+but itself — so it reads an untracked `~/.claude/statusline.conf`, which the
+allowlist already ignores. Both directives are optional; with no file at all
+the line is what it has always been:
+
+```
+segments 5h 7d ctx turns model where
+ramp     blue cyan yellow magenta
+```
+
+`segments` chooses which parts of the line appear **and the order they appear
+in**. A name nothing answers to is drawn as `?name` rather than dropped: a
+segment that vanishes on a typo looks exactly like one whose data was absent
+that turn.
+
+`ramp` names four colours lowest-band-first, from `black red green yellow blue
+magenta cyan white`. Both ramps draw from them — the percentage bands
+(40/70/90) and the turn timer's (1m/3m/10m) keep their own thresholds but
+share the palette. Four names or none: a ramp naming three, or five, or one
+colour nothing knows leaves the default standing, so a typo reads as nothing
+having changed rather than as one band quietly painted wrong.
+
+The default is daltonised on purpose — blue → cyan → yellow → magenta, with no
+red/green axis. It is hard-coded for nobody now, which matters most for the
+people it was never right for.
+
+`bin/install` reports what the statusline resolved, naming any directive it had
+to ignore — the statusline falls back in silence, having one line and no error
+channel. Ask it directly with `bin/statusline --explain`.
+
 
 Verify:
 

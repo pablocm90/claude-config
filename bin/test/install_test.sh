@@ -44,6 +44,7 @@ machine() {
   printf '%s' "$m"
 }
 run() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" bash "$INSTALL" "${@:2}" 2>&1); }
+run_status() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" bash "$INSTALL" "${@:2}" >/dev/null 2>&1; echo "$?"); }
 
 # --- the commit guard -------------------------------------------------------
 # This repo is public and a hook refuses any commit carrying a client name or a
@@ -168,6 +169,60 @@ ns=$(machine no-settings); rm "$ns/checkout/settings.json"
 assert_reports "a checkout with no settings.json says so" \
   "$(run "$ns")" "no settings.json"
 assert_status "and still finishes cleanly" "$( (run "$ns" >/dev/null 2>&1); echo "$?" )" 0
+
+# --- turning a skill on and off ---------------------------------------------
+# The overrides live in settings.json, which is tracked, because that is the
+# only user-level settings file Claude Code reads — ~/.claude/settings.local.json
+# is not one, so a toggle written there would be gitignored and inert.
+tg=$(machine toggle)
+mkdir -p "$tg/checkout/skills/diagrams"
+printf '{ "theme": "dark-daltonized", "skillOverrides": { "diagrams": "off" } }\n' \
+  > "$tg/checkout/settings.json"
+
+assert_reports "turning one on reports it" "$(run "$tg" --skill diagrams=on)" "diagrams"
+assert_eq "and the override is gone, leaving the default" \
+  "$(jq -r '.skillOverrides.diagrams // "absent"' "$tg/checkout/settings.json")" "absent"
+assert_reports "a second run reports it already on" \
+  "$(run "$tg" --skill diagrams=on)" "already on"
+assert_eq "and the rest of settings.json survives the rewrite" \
+  "$(jq -r .theme "$tg/checkout/settings.json")" "dark-daltonized"
+
+assert_reports "turning it off reports it" "$(run "$tg" --skill diagrams=off)" "turned off"
+assert_eq "and the override is recorded" \
+  "$(jq -r .skillOverrides.diagrams "$tg/checkout/settings.json")" "off"
+
+# A typo must not quietly record an override for a skill that does not exist:
+# it would be gitignored by nothing, read by everything, and mean nothing.
+assert_status "an unknown skill is refused" "$(run_status "$tg" --skill diagrmas=on)" 2
+assert_reports "and said so" "$(run "$tg" --skill diagrmas=on)" "no skill named"
+assert_status "a value that is neither on nor off is refused" \
+  "$(run_status "$tg" --skill diagrams=yes)" 2
+# --skill =on would otherwise pass the skills-directory check, because the
+# skills directory itself exists, and record an override under an empty name.
+assert_status "a --skill with no skill in it is refused" \
+  "$(run_status "$tg" --skill =on)" 2
+assert_eq "and nothing was written" \
+  "$(jq -r .skillOverrides.diagrams "$tg/checkout/settings.json")" "off"
+
+# settings.json is tracked, so a toggle has to diff only the toggle: a rewrite
+# that reformatted the file would bury a one-line intent in whole-file noise.
+fmt=$(machine format)
+mkdir -p "$fmt/checkout/skills/diagrams"
+cat > "$fmt/checkout/settings.json" <<'JSON'
+{
+  "theme": "dark-daltonized",
+  "skillOverrides": {
+    "diagrams": "off",
+    "accessibility": "off"
+  }
+}
+JSON
+cp "$fmt/checkout/settings.json" "$fmt/before.json"
+run "$fmt" --skill diagrams=on >/dev/null
+assert_eq "a toggle changes exactly one line of settings.json" \
+  "$(diff "$fmt/before.json" "$fmt/checkout/settings.json" | grep -c '^[<>]')" "1"
+assert_eq "and the skill beside it is untouched" \
+  "$(jq -r .skillOverrides.accessibility "$fmt/checkout/settings.json")" "off"
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "install: all assertions passed"

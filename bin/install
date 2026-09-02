@@ -10,6 +10,8 @@
 # this does it for the machine. Nothing already on the machine is replaced.
 set -euo pipefail
 
+die() { printf 'install: %s\n' "$*" >&2; exit 2; }
+
 ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # The tools invoked by name — from a shell, from the tmux bindings, from
@@ -17,7 +19,9 @@ ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # path. Neither is preflight, which is run as bin/preflight in the checkout.
 TOOLS=(claude-dev claude-dev-review claude-dev-status)
 
-# One line per fact: a dim glyph, the thing, what is true of it.
+# A section names the place the lines under it are about; one line per fact
+# below it: a dim glyph, the thing, what is true of it.
+section() { printf '%-9s %s\n' "$1:" "$2"; }
 line()  { printf '  \033[2m%s\033[0m %-18s %s\n' "$1" "$2" "$3"; }
 ok()    { line ✓ "$1" "$2"; }
 wired() { line → "$1" "$2"; }
@@ -56,7 +60,7 @@ link_file() { # target link label
 tools_on_path() {
   local dir="$HOME/.local/bin" t
   mkdir -p "$dir"
-  printf 'bin dir:  %s\n' "$dir"
+  section 'bin dir' "$dir"
   for t in "${TOOLS[@]}"; do
     link_file "$ROOT/bin/$t" "$dir/$t" "$t" || true
   done
@@ -68,7 +72,7 @@ tools_on_path() {
 # was never told about, so an unlinked machine just has no bindings.
 tmux_config() {
   local target="$ROOT/dotfiles/tmux.conf"
-  printf 'home:     %s\n' "$HOME"
+  section home "$HOME"
   link_file "$target" "$HOME/.tmux.conf" 'tmux.conf' ||
     printf '    add ours on top of it:  source %s\n' "$target"
 }
@@ -78,7 +82,7 @@ tmux_config() {
 # it does state it, because nothing else announces that a skill will not load.
 skills_off() {
   local settings="$ROOT/settings.json" off
-  printf 'settings: %s\n' "$settings"
+  section settings "$settings"
   if [ ! -f "$settings" ]; then
     warn 'skills' 'no settings.json in this checkout'
     return 0
@@ -92,7 +96,49 @@ skills_off() {
   ok 'skills off' "${off:-none}"
 }
 
-printf 'checkout: %s\n' "$ROOT"
+# Overrides live in settings.json, which this repo tracks: it is the only
+# user-level settings file Claude Code reads. There is no user-level
+# settings.local.json — the local one is a project file — so a toggle put
+# there would be gitignored, never read, and look like it had worked.
+# settings.json lists what is off, so turning a skill on removes its entry.
+set_skill() { # name=on|off
+  local pair="$1" name value settings="$ROOT/settings.json" current tmp
+  name="${pair%%=*}"; value="${pair#*=}"
+  [ -n "$name" ] && [ "$value" != "$pair" ] || die "expected --skill <name>=on|off, not '$pair'"
+  case "$value" in on|off) ;; *) die "a skill is on or off, not '$value'" ;; esac
+  [ -d "$ROOT/skills/$name" ] || die "no skill named '$name' in $ROOT/skills"
+  command -v jq >/dev/null 2>&1 || die "changing a skill needs jq"
+
+  section settings "$settings"
+  current=$(jq -r --arg n "$name" 'if .skillOverrides[$n] == "off" then "off" else "on" end' "$settings")
+  if [ "$current" = "$value" ]; then
+    ok "$name" "already $value"
+    return
+  fi
+  tmp=$(mktemp)
+  if [ "$value" = on ]; then
+    jq --indent 2 --arg n "$name" 'del(.skillOverrides[$n])' "$settings" > "$tmp"
+  else
+    jq --indent 2 --arg n "$name" '.skillOverrides[$n] = "off"' "$settings" > "$tmp"
+  fi
+  mv "$tmp" "$settings"
+  wired "$name" "turned $value"
+}
+
+SKILL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill) [ $# -ge 2 ] || die "--skill needs <name>=on|off"; SKILL="$2"; shift 2 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+
+if [ -n "$SKILL" ]; then
+  set_skill "$SKILL"
+  exit 0
+fi
+
+section checkout "$ROOT"
 commit_guard
 tools_on_path
 tmux_config

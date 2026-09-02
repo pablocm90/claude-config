@@ -131,6 +131,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |
 | `claude-dev ls` | task windows and worktrees |
+| `claude-dev doctor` | check the workspace against the conventions the rest of the tool assumes; exits on the number of findings |
 | `claude-dev done <slug>` | remove the window and worktree; refuses if dirty |
 | `claude-dev prune [--yes]` | remove clean worktrees whose PR is merged or closed |
 
@@ -186,7 +187,13 @@ green when it is this window, grey when another task has it.
 
 ## Wiring a new project
 
-The framework is generic; four things are per-project.
+The framework is generic; four things are per-project. `claude-dev doctor`
+names the ones a workspace has not done yet, each with the command that
+satisfies it, because every one of them fails silently — an unmarked root, a
+repo with no origin remote, an unignored worktree directory, a ports file that
+names no port. None of those raises an error; they just leave the tool looking
+as though it had forgotten a repo existed. Run it once in a new workspace, and
+again whenever something behaves that way.
 
 **The pre-push gate.** `mmmss-stride` requires one fast static gate before a
 push and defers to the project for the command. Name it in the project's
@@ -201,9 +208,12 @@ echo '8000 5173'          > <workspace>/.claude/ports   # default: 3000 4000
 ```
 
 Ask what it resolved with `claude-dev serve-cmd` and `claude-dev serve-ports`.
+A ports file that survives comment-stripping with no digits left in it counts
+as absent, and serving quietly falls back to 3000/4000; doctor reports that.
 
 **Worktrees.** `claude-dev task <slug>` cuts them at
-`<repo>/.claude/worktrees/<slug>`; gitignore `.claude/` in the project.
+`<repo>/.claude/worktrees/<slug>`; gitignore that path in the project — not
+`.claude/` wholesale, which would take the `serve` file above with it.
 
 **Onboarding.** Run `/setup` inside a new project to detect its stack and
 generate a project `CLAUDE.md`, hooks and commands.

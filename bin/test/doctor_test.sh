@@ -101,6 +101,21 @@ assert_reports "and the remedy names the pattern to add" \
   "$(out "$ign" doctor)" "fix:"
 assert_status "and doctor reports failure" "$(status "$ign" doctor)" 1
 
+# --- a ports file that names nothing ----------------------------------------
+# serve_ports strips comments and keeps the digits. When nothing survives it
+# returns the historical default without a word, so a workspace that believes
+# it configured its ports quietly serves on the pair it meant to move off.
+prt="$tmp/ports"; mkdir -p "$prt/.claude"; touch "$prt/CLAUDE.md"
+printf '# TODO: pick these — was 3000\n' > "$prt/.claude/ports"
+assert_reports "a ports file naming no port is named" "$(out "$prt" doctor)" "names no port"
+assert_reports "along with the fallback it will silently use" "$(out "$prt" doctor)" "3000 4000"
+assert_reports "and the shape it wants instead" "$(out "$prt" doctor)" "fix:"
+assert_status "and doctor reports failure" "$(status "$prt" doctor)" 1
+
+printf '8000 5173\n' > "$prt/.claude/ports"
+assert_silent_about "a file that names ports raises nothing" "$(out "$prt" doctor)" "names no port"
+assert_status "and doctor reports success" "$(status "$prt" doctor)" 0
+
 rm -rf "$tmp" "$stub"
 [ "$fails" -eq 0 ] && echo "doctor: all assertions passed"
 exit "$fails"

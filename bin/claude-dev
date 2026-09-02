@@ -472,10 +472,16 @@ serve_cmd() {
   return 1
 }
 
+# The ports a file names, empty when it names none: a file can exist and still
+# say nothing, and the two callers must agree on when that is true.
+configured_ports() {
+  sed 's/#.*//' "$1" | tr -cs '0-9' ' ' | sed 's/^ //; s/ $//'
+}
+
 serve_ports() {
   local f="$1/.claude/ports" ports=""
   if [ -f "$f" ]; then
-    ports=$(sed 's/#.*//' "$f" | tr -cs '0-9' ' ' | sed 's/^ //; s/ $//')
+    ports=$(configured_ports "$f")
   fi
   printf '%s' "${ports:-3000 4000}"
 }
@@ -633,7 +639,7 @@ cmd_ls() {
 # that does not meet them raises no error, it just leaves the tool operating
 # on the wrong directory. Doctor states each fact and how to satisfy it.
 cmd_doctor() {
-  local root problems=0 discoverable d repo
+  local root problems=0 discoverable d repo ports_file
   root=$(resolve_root)
   printf 'workspace: %s\n' "$root"
 
@@ -665,6 +671,14 @@ cmd_doctor() {
       problems=$((problems + 1))
     fi
   done <<<"$discoverable"
+
+  ports_file="$root/.claude/ports"
+  if [ -f "$ports_file" ] && [ -z "$(configured_ports "$ports_file")" ]; then
+    printf '  %s names no port — serve falls back to %s\n' \
+      "$ports_file" "$(serve_ports "$root")"
+    printf '    fix: name them as digits, e.g. echo '"'"'8000 5173'"'"' > %s\n' "$ports_file"
+    problems=$((problems + 1))
+  fi
 
   if [ "$problems" -eq 0 ]; then
     printf '  wired for claude-dev\n'

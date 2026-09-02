@@ -633,7 +633,7 @@ cmd_ls() {
 # that does not meet them raises no error, it just leaves the tool operating
 # on the wrong directory. Doctor states each fact and how to satisfy it.
 cmd_doctor() {
-  local root problems=0 discoverable d
+  local root problems=0 discoverable d repo
   root=$(resolve_root)
   printf 'workspace: %s\n' "$root"
 
@@ -654,6 +654,17 @@ cmd_doctor() {
       problems=$((problems + 1))
     fi
   done
+
+  # A `.claude/worktrees/` pattern matches paths inside the directory, never
+  # the bare directory path — so probe with a worktree that could exist.
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    if ! git -C "$repo" check-ignore -q .claude/worktrees/any 2>/dev/null; then
+      printf '  %s does not ignore .claude/worktrees — its worktrees read as untracked\n' "$repo"
+      printf '    fix: echo .claude/worktrees/ >> %s/.gitignore\n' "$repo"
+      problems=$((problems + 1))
+    fi
+  done <<<"$discoverable"
 
   if [ "$problems" -eq 0 ]; then
     printf '  wired for claude-dev\n'

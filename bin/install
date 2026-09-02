@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# install: wire this checkout into the machine it was cloned onto.
+#
+#   bin/install                          report every per-machine fact and
+#                                        wire the ones not wired yet
+#
+# Idempotent by contract: it is run once on a fresh machine and again on one
+# already set up, so it states what it finds before changing anything, and
+# changes only what is missing. `claude-dev doctor` does this for a workspace;
+# this does it for the machine. Nothing already on the machine is replaced.
+set -euo pipefail
+
+die() { printf 'install: %s\n' "$*" >&2; exit 2; }
+
+ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# The tools invoked by name — from a shell, from the tmux bindings, from
+# Claude. statusline is not among them: settings.json names it by absolute
+# path. Neither is preflight, which is run as bin/preflight in the checkout.
+TOOLS=(claude-dev claude-dev-review claude-dev-status)
+
+# A section names the place the lines under it are about; one line per fact
+# below it: a dim glyph, the thing, what is true of it.
+section() { printf '%-9s %s\n' "$1:" "$2"; }
+line()  { printf '  \033[2m%s\033[0m %-18s %s\n' "$1" "$2" "$3"; }
+ok()    { line ✓ "$1" "$2"; }
+wired() { line → "$1" "$2"; }
+warn()  { line ! "$1" "$2"; }
+
+# The repo is public and .githooks/pre-commit refuses any commit carrying a
+# client name, a credential or a personal path — but only once core.hooksPath
+# points at it. git does not adopt a repo's hooks on its own.
+commit_guard() {
+  local current
+  current=$(git -C "$ROOT" config --local core.hooksPath || true)
+  if [ "$current" = .githooks ]; then
+    ok 'commit guard' 'already wired to .githooks'
+    return
+  fi
+  git -C "$ROOT" config --local core.hooksPath .githooks
+  wired 'commit guard' 'core.hooksPath now .githooks'
+}
+
+# Put one file in place without replacing what is already there. A link counts
+# as ours only when it resolves to the file we mean to install: accepting one
+# by its name would report a wired machine that runs an older checkout's copy.
+# Answers 1 when the name was taken, so a caller can say what to do instead.
+link_file() { # target link label
+  if [ -L "$2" ] && [ "$(readlink -f "$2")" = "$(readlink -f "$1")" ]; then
+    ok "$3" 'already linked'
+  elif [ -e "$2" ] || [ -L "$2" ]; then
+    warn "$3" 'not ours — left alone'
+    return 1
+  else
+    ln -s "$1" "$2"
+    wired "$3" 'linked'
+  fi
+}
+
+tools_on_path() {
+  local dir="$HOME/.local/bin" t
+  mkdir -p "$dir"
+  section 'bin dir' "$dir"
+  for t in "${TOOLS[@]}"; do
+    link_file "$ROOT/bin/$t" "$dir/$t" "$t" || true
+  done
+
+  # A link the shell never searches for is not an installed tool. Matching
+  # PATH literally is enough: install put the links in exactly this string.
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) warn 'bin dir' 'not on PATH — nothing above is reachable yet'
+       printf '    add it:  export PATH="%s:$PATH"\n' "$dir" ;;
+  esac
+}
+
+# Everything the workspace does with tmux — the prefix, the review popup, the
+# serve button, the window tabs — lives in dotfiles/tmux.conf, and none of it
+# exists until ~/.tmux.conf points at it. tmux says nothing about a config it
+# was never told about, so an unlinked machine just has no bindings.
+tmux_config() {
+  local target="$ROOT/dotfiles/tmux.conf"
+  section home "$HOME"
+  link_file "$target" "$HOME/.tmux.conf" 'tmux.conf' ||
+    printf '    add ours on top of it:  source %s\n' "$target"
+}
+
+# settings.json turns some skills off. That is a preference, not a wiring
+# fault, so this states it rather than counting it against the machine — but
+# it does state it, because nothing else announces that a skill will not load.
+skills_off() {
+  local settings="$ROOT/settings.json" off
+  section settings "$settings"
+  if [ ! -f "$settings" ]; then
+    warn 'skills' 'no settings.json in this checkout'
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    warn 'skills' 'cannot read them — jq is not installed'
+    return 0
+  fi
+  off=$(jq -r '(.skillOverrides // {}) | to_entries
+    | map(select(.value == "off") | .key) | join(" ")' "$settings")
+  ok 'skills off' "${off:-none}"
+}
+
+# Overrides live in settings.json, which this repo tracks: it is the only
+# user-level settings file Claude Code reads. There is no user-level
+# settings.local.json — the local one is a project file — so a toggle put
+# there would be gitignored, never read, and look like it had worked.
+# settings.json lists what is off, so turning a skill on removes its entry.
+set_skill() { # name=on|off
+  local pair="$1" name value settings="$ROOT/settings.json" current tmp
+  name="${pair%%=*}"; value="${pair#*=}"
+  [ -n "$name" ] && [ "$value" != "$pair" ] || die "expected --skill <name>=on|off, not '$pair'"
+  case "$value" in on|off) ;; *) die "a skill is on or off, not '$value'" ;; esac
+  [ -d "$ROOT/skills/$name" ] || die "no skill named '$name' in $ROOT/skills"
+  command -v jq >/dev/null 2>&1 || die "changing a skill needs jq"
+
+  section settings "$settings"
+  current=$(jq -r --arg n "$name" 'if .skillOverrides[$n] == "off" then "off" else "on" end' "$settings")
+  if [ "$current" = "$value" ]; then
+    ok "$name" "already $value"
+    return
+  fi
+  tmp=$(mktemp)
+  if [ "$value" = on ]; then
+    jq --indent 2 --arg n "$name" 'del(.skillOverrides[$n])' "$settings" > "$tmp"
+  else
+    jq --indent 2 --arg n "$name" '.skillOverrides[$n] = "off"' "$settings" > "$tmp"
+  fi
+  mv "$tmp" "$settings"
+  wired "$name" "turned $value"
+}
+
+# The statusline resolves its own configuration, so ask it. Reading
+# statusline.conf here would mean a second parser of the directive names, the
+# comment rule and the colour names — and the one that drifts is always the
+# one nobody is looking at. It also reports what it had to ignore, which is
+# the part nothing outside it could work out: a status line has one line and
+# no error channel, so falling back is all it can do on its own.
+statusline_config() {
+  local sl="$ROOT/bin/statusline" key value
+  if [ ! -x "$sl" ]; then
+    section statusline "$sl"
+    warn 'statusline' 'not executable in this checkout'
+    return 0
+  fi
+  while IFS=' ' read -r key value; do
+    case "$key" in
+      config)   section statusline "$value" ;;
+      segments) ok 'segments' "$value" ;;
+      ramp)     ok 'ramp' "$value" ;;
+      ignored)  warn "$value" 'unreadable — the statusline fell back to its default' ;;
+    esac
+  done < <("$sl" --explain </dev/null)
+}
+
+SKILL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skill) [ $# -ge 2 ] || die "--skill needs <name>=on|off"; SKILL="$2"; shift 2 ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+
+if [ -n "$SKILL" ]; then
+  set_skill "$SKILL"
+  exit 0
+fi
+
+section checkout "$ROOT"
+commit_guard
+tools_on_path
+tmux_config
+skills_off
+statusline_config

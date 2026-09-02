@@ -17,6 +17,8 @@
 #                                        would fail if nothing is configured
 #   claude-dev serve-ports               the ports a served task takes over
 #   claude-dev ls                        list task windows and worktrees
+#   claude-dev doctor                    check this workspace against the
+#                                        conventions claude-dev assumes
 #
 # Repos can be named by fragment (be/backend, fe/frontend). Session root is
 # remembered in the tmux environment, so `task` works from inside the session.
@@ -156,9 +158,8 @@ cmd_hub() {
   # spawning task windows (claude-dev task <slug> [be|fe]).
   tmux new-session -d -s "$session" -c "$root" -n hub
   tmux set-environment -t "$session" CLAUDE_DEV_ROOT "$root"
-  # Deliver a stride's review when the human arrives at its window. Popups are
-  # client-scoped, so this is the only way a review can reach the window it
-  # belongs to without landing on whatever else is on screen.
+  # Deliver a stride's review when the human arrives at its window: one armed
+  # while another window was on screen waits behind this hook.
   tmux set-hook -t "$session" after-select-window \
     'run-shell -b "claude-dev pop-review #{window_name} >/dev/null 2>&1 || true"'
   tmux send-keys -t "$session:hub" "claude-dev-status '$root'" C-m
@@ -383,6 +384,26 @@ cmd_ready() {
   fi
 }
 
+# The client attached to a session, if any. A popup is drawn on a client, not
+# on a session: told nothing, tmux draws it on the first client on the server,
+# so with several workspaces open at once a review lands on whichever project's
+# terminal happens to sort first.
+client_for_session() {
+  local name
+  name=$(tmux list-clients -F '#{client_name} #{client_session}' 2>/dev/null |
+           awk -v s="$1" '$2 == s { print $1; exit }')
+  [ -n "$name" ] || return 1
+  printf '%s' "$name"
+}
+
+# Draw a review on one client's screen. run-shell -b fires it server-side so
+# the caller (Claude's turn, or a window switch) never blocks on the modal
+# popup.
+popup_review() {
+  local client="$1" window="$2" extra="${3:-}"
+  tmux run-shell -b "tmux display-popup -EE -c '$client' -w 90% -h 90% 'claude-dev review $window${extra:+ $extra} || true'" 2>/dev/null || true
+}
+
 # Deliver a window's pending review, once. Called by cmd_ready when the window
 # is already on screen, and by the after-select-window hook when the human
 # switches to a window holding an armed flag. Exits 1 when nothing is due, so
@@ -395,11 +416,28 @@ cmd_pop_review() {
   local dir="$root/.claude/reviews"
   [ -f "$dir/$window.ready" ] || return 1
   [ -f "$dir/$window.popped" ] && return 1
+  if [ -z "${TMUX:-}" ]; then : > "$dir/$window.popped"; return 0; fi
+  # No terminal on this workspace: a review drawn on another project's screen
+  # is worse than one that waits, and marking it popped would consume it
+  # unseen — leave it armed for the next window switch.
+  local client
+  client=$(client_for_session "$(session_for "$root")") || return 1
   : > "$dir/$window.popped"
-  [ -n "${TMUX:-}" ] || return 0
-  # run-shell -b fires the popup server-side so this returns at once and never
-  # blocks the caller (Claude's turn, or the window switch) on the modal popup.
-  tmux run-shell -b "tmux display-popup -EE -w 90% -h 90% 'claude-dev review $window --stride || true'" 2>/dev/null || true
+  popup_review "$client" "$window" --stride
+}
+
+# The on-demand twin (prefix + r): review the whole branch, not the last
+# stride. A key press knows which client it came from, but the popup it builds
+# does not, so this resolves the client rather than letting tmux choose.
+cmd_review_popup() {
+  local window="${1:-}"
+  local root; root=$(resolve_root)
+  [ -n "$window" ] || window=$(current_window || true)
+  [ -n "$window" ] || return 1
+  [ -n "${TMUX:-}" ] || return 1
+  local client
+  client=$(client_for_session "$(session_for "$root")") || return 1
+  popup_review "$client" "$window"
 }
 
 # Serve configuration ---------------------------------------------------------
@@ -434,10 +472,16 @@ serve_cmd() {
   return 1
 }
 
+# The ports a file names, empty when it names none: a file can exist and still
+# say nothing, and the two callers must agree on when that is true.
+configured_ports() {
+  sed 's/#.*//' "$1" | tr -cs '0-9' ' ' | sed 's/^ //; s/ $//'
+}
+
 serve_ports() {
   local f="$1/.claude/ports" ports=""
   if [ -f "$f" ]; then
-    ports=$(sed 's/#.*//' "$f" | tr -cs '0-9' ' ' | sed 's/^ //; s/ $//')
+    ports=$(configured_ports "$f")
   fi
   printf '%s' "${ports:-3000 4000}"
 }
@@ -451,9 +495,11 @@ cmd_serve_cmd() {
 
 cmd_serve_ports() { printf '%s\n' "$(serve_ports "$(resolve_root)")"; }
 
-# Run a task's dev stack in its worktree panes, and stop every other one:
-# ports 3000/4000 are workspace-global, so serving one task means stopping
-# the rest. Pressing the key in the window that is already serving restarts it.
+# Run a task's dev stack in its worktree panes, and stop every other one in
+# this workspace: the ports are workspace-global, so serving one task means
+# stopping the rest. Other workspaces on the same tmux server serve themselves
+# and are left alone. Pressing the key in the window that is already serving
+# restarts it.
 cmd_serve() {
   local slug="" stop_only=0
   while [ $# -gt 0 ]; do
@@ -475,9 +521,10 @@ cmd_serve() {
 
   # C-c rather than respawn-pane: the pane keeps its shell and the dying
   # server's backtrace, which is usually why you switched worktrees at all.
+  # Scoped to this session — another workspace's server is not ours to stop.
   local id
   while IFS= read -r id; do tmux send-keys -t "$id" C-c; done < <(
-    tmux list-panes -a -F '#{pane_id}	#{pane_current_command}	#{pane_current_path}' |
+    tmux list-panes -s -t "$session" -F '#{pane_id}	#{pane_current_command}	#{pane_current_path}' |
       awk -F'\t' '$2 ~ /^(puma|ruby|node|vite|sidekiq|bundle|rails)$/ &&
                   $3 ~ /\/\.claude\/worktrees\// { print $1 }'
   )
@@ -495,33 +542,62 @@ cmd_serve() {
 
   # Target panes by path, never by index: a task scoped to one repo
   # (claude-dev task <slug> be) has no frontend pane at position 3.
-  local path cmd start started=0
+  local path cmd start started=0 stranded=""
   while IFS=$'\t' read -r id path cmd; do
     case "$cmd" in zsh|bash|sh|fish) ;; *) continue ;; esac
-    case "$path" in */.claude/worktrees/"$window"|*/.claude/worktrees/"$window"/*) ;; *) continue ;; esac
+    case "$path" in
+      */.claude/worktrees/"$window"|*/.claude/worktrees/"$window"/*) ;;
+      */.claude/worktrees|*/.claude/worktrees/*)
+        # A pane parked in the worktrees dir itself means this task's worktree
+        # there is gone (pruned, or removed by hand). Nothing can start for
+        # that repo, and reporting only the half that did start is how you end
+        # up staring at a dead front end.
+        stranded="${stranded:+$stranded }$(basename "${path%%/.claude/worktrees*}")"
+        continue ;;
+      *) continue ;;
+    esac
     start=$(serve_cmd "$path") || continue
     tmux send-keys -t "$id" "$start" C-m; started=1
   done < <(tmux list-panes -t "$session:$window" \
              -F '#{pane_id}	#{pane_current_path}	#{pane_current_command}')
 
+  [ -n "$stranded" ] &&
+    echo "claude-dev: no '$window' worktree in $stranded — nothing started there" >&2
   [ "$started" -eq 1 ] ||
     die "nothing started in '$window' — no idle worktree shell, or no start command (claude-dev serve-cmd)"
-  tmux display-message -t "$session" "serving '$window' -> $(printf '%s' "$ports" | sed 's/[0-9][0-9]*/:&/g')"
+  local msg="serving '$window' -> $(printf '%s' "$ports" | sed 's/[0-9][0-9]*/:&/g')"
+  [ -n "$stranded" ] && msg="$msg (nothing in $stranded)"
+  tmux display-message -t "$session" "$msg"
 }
 
-# Which task window holds :3000, published as the @serving user option for the
-# status line to render. Resolves the port's actual owner and walks up to the
-# pane that spawned it: matching on pane_current_command would light the button
-# green for a pane merely running the test suite, which is `ruby` too.
+# Which task window holds this workspace's main port, published as the
+# @serving user option for the status line to render. Resolves the port's
+# actual owner and walks up to the pane that spawned it: matching on
+# pane_current_command would light the button green for a pane merely running
+# the test suite, which is `ruby` too.
+# Every attached session's status line runs this, so the session is named
+# rather than inferred, and @serving is set on that session: a workspace must
+# not publish another one's window into its neighbours' status bars.
 # Runs from #() on every status redraw, so it stays to a few cheap calls.
 cmd_serving() {
-  local refresh=0
-  [ "${1:-}" = "--refresh" ] && refresh=1
+  local refresh=0 session=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --refresh) refresh=1 ;;
+      --session) session="${2:-}"; shift ;;
+    esac
+    shift
+  done
+  local root=""
+  [ -n "$session" ] &&
+    root=$(tmux show-environment -t "$session" CLAUDE_DEV_ROOT 2>/dev/null | cut -d= -f2-)
+  [ -n "$root" ] || root=$(resolve_root)
+  [ -n "$session" ] || session=$(session_for "$root")
   local pid win="" panes i
-  local main_port; main_port=$(serve_ports "$(resolve_root)" | awk '{print $1}')
+  local main_port; main_port=$(serve_ports "$root" | awk '{print $1}')
   pid=$(fuser "$main_port/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -m1 -E '^[0-9]+$') || pid=""
   if [ -n "$pid" ]; then
-    panes=$(tmux list-panes -a -F '#{pane_pid} #{window_name}' 2>/dev/null) || panes=""
+    panes=$(tmux list-panes -s -t "$session" -F '#{pane_pid} #{window_name}' 2>/dev/null) || panes=""
     for i in $(seq 12); do
       [ -n "$pid" ] && [ "$pid" != 1 ] || break
       win=$(printf '%s\n' "$panes" | awk -v p="$pid" '$1 == p { print $2; exit }')
@@ -532,7 +608,7 @@ cmd_serving() {
   # --refresh publishes and prints nothing: the status line reads @serving
   # through ordinary format conditionals rather than this command's output.
   if [ "$refresh" -eq 1 ]; then
-    tmux set -gq @serving "$win" 2>/dev/null || true
+    tmux set -q -t "$session" @serving "$win" 2>/dev/null || true
     return 0
   fi
   [ -n "$win" ] && printf '%s\n' "$win"
@@ -558,6 +634,63 @@ cmd_ls() {
   done < <(list_repos "$root")
 }
 
+# Workspace diagnosis ---------------------------------------------------------
+# The conventions above are enforced nowhere and fail silently — a workspace
+# that does not meet them raises no error, it just leaves the tool operating
+# on the wrong directory. Doctor states each fact and how to satisfy it.
+
+# Print one finding and count it. `problems` belongs to the caller: a bash local
+# is visible to the functions it calls, which is what keeps each check below a
+# single statement about a single fact.
+finding() {
+  printf '  %s\n' "$1"
+  printf '    fix: %s\n' "$2"
+  problems=$((problems + 1))
+}
+
+cmd_doctor() {
+  local root problems=0 discoverable d repo ports_file
+  root=$(resolve_root)
+  printf 'workspace: %s\n' "$root"
+
+  if [ ! -f "$root/CLAUDE.md" ]; then
+    finding "no CLAUDE.md here — task windows will not hoist to this workspace" \
+            "run /setup here, or touch $root/CLAUDE.md"
+  fi
+
+  # list_repos reports its last candidate's status, not its own success.
+  discoverable=$(list_repos "$root") || true
+  for d in "$root"/*/; do
+    d="${d%/}"
+    [ -e "$d/.git" ] || continue
+    if ! grep -Fxq "$d" <<<"$discoverable"; then
+      finding "$d has no origin remote — claude-dev does not count it as a repo" \
+              "git -C $d remote add origin <url>"
+    fi
+  done
+
+  # A `.claude/worktrees/` pattern matches paths inside the directory, never
+  # the bare directory path — so probe with a worktree that could exist.
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    if ! git -C "$repo" check-ignore -q .claude/worktrees/any 2>/dev/null; then
+      finding "$repo does not ignore .claude/worktrees — its worktrees read as untracked" \
+              "echo .claude/worktrees/ >> $repo/.gitignore"
+    fi
+  done <<<"$discoverable"
+
+  ports_file="$root/.claude/ports"
+  if [ -f "$ports_file" ] && [ -z "$(configured_ports "$ports_file")" ]; then
+    finding "$ports_file names no port — serve falls back to $(serve_ports "$root")" \
+            "name them as digits, e.g. echo '8000 5173' > $ports_file"
+  fi
+
+  if [ "$problems" -eq 0 ]; then
+    printf '  wired for claude-dev\n'
+  fi
+  return "$problems"
+}
+
 case "${1:-}" in
   task)   shift; cmd_task "$@" ;;
   done)   shift; cmd_done "$@" ;;
@@ -565,11 +698,13 @@ case "${1:-}" in
   cycle)  shift; cmd_cycle "$@" ;;
   ready)  shift; cmd_ready "$@" ;;
   pop-review) shift; cmd_pop_review "$@" ;;
+  review-popup) shift; cmd_review_popup "$@" ;;
   serve)  shift; cmd_serve "$@" ;;
   serving) shift; cmd_serving "$@" ;;
   serve-cmd) shift; cmd_serve_cmd "$@" ;;
   serve-ports) shift; cmd_serve_ports "$@" ;;
   ls)     shift; cmd_ls "$@" ;;
+  doctor) shift; cmd_doctor "$@" ;;
   review) shift; CLAUDE_DEV_ROOT="$(resolve_root)" exec claude-dev-review "$@" ;;
   *)      cmd_hub "$@" ;;
 esac

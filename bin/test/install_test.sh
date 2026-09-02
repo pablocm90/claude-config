@@ -224,6 +224,20 @@ assert_eq "a toggle changes exactly one line of settings.json" \
 assert_eq "and the skill beside it is untouched" \
   "$(jq -r .skillOverrides.accessibility "$fmt/checkout/settings.json")" "off"
 
+# --- the bin directory on PATH ----------------------------------------------
+# Linking the tools does not make them findable. A link in a directory the
+# shell never searches is the usual reason claude-dev "does not exist" right
+# after an install that reported it linked — and install is the only thing in
+# a position to notice, because it is the one that chose the directory.
+p=$(machine path)
+assert_reports "a bin dir outside PATH is named" "$(run "$p")" "not on PATH"
+assert_reports "with the line that puts it there" "$(run "$p")" "export PATH="
+
+on_path() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" \
+  PATH="$1/home/.local/bin:$PATH" bash "$INSTALL" 2>&1); }
+assert_silent_about "a bin dir already on PATH raises nothing" \
+  "$(on_path "$p")" "not on PATH"
+
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "install: all assertions passed"
 exit "$fails"

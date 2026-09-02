@@ -64,6 +64,14 @@ tools_on_path() {
   for t in "${TOOLS[@]}"; do
     link_file "$ROOT/bin/$t" "$dir/$t" "$t" || true
   done
+
+  # A link the shell never searches for is not an installed tool. Matching
+  # PATH literally is enough: install put the links in exactly this string.
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) warn 'bin dir' 'not on PATH — nothing above is reachable yet'
+       printf '    add it:  export PATH="%s:$PATH"\n' "$dir" ;;
+  esac
 }
 
 # Everything the workspace does with tmux — the prefix, the review popup, the

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# install: wire this checkout into the machine it was cloned onto.
+#
+#   bin/install                          report every per-machine fact and
+#                                        wire the ones not wired yet
+#
+# Idempotent by contract: it is run once on a fresh machine and again on one
+# already set up, so it states what it finds before changing anything, and
+# changes only what is missing. `claude-dev doctor` does this for a workspace;
+# this does it for the machine.
+set -euo pipefail
+
+ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+ok()    { printf '  \033[2m✓\033[0m %-18s %s\n' "$1" "$2"; }
+wired() { printf '  \033[2m→\033[0m %-18s %s\n' "$1" "$2"; }
+
+# The repo is public and .githooks/pre-commit refuses any commit carrying a
+# client name, a credential or a personal path — but only once core.hooksPath
+# points at it. git does not adopt a repo's hooks on its own.
+commit_guard() {
+  local current
+  current=$(git -C "$ROOT" config --local core.hooksPath || true)
+  if [ "$current" = .githooks ]; then
+    ok 'commit guard' 'already wired to .githooks'
+    return
+  fi
+  git -C "$ROOT" config --local core.hooksPath .githooks
+  wired 'commit guard' 'core.hooksPath now .githooks'
+}
+
+printf 'checkout: %s\n' "$ROOT"
+commit_guard

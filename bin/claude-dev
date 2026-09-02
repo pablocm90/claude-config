@@ -17,6 +17,8 @@
 #                                        would fail if nothing is configured
 #   claude-dev serve-ports               the ports a served task takes over
 #   claude-dev ls                        list task windows and worktrees
+#   claude-dev doctor                    check this workspace against the
+#                                        conventions claude-dev assumes
 #
 # Repos can be named by fragment (be/backend, fe/frontend). Session root is
 # remembered in the tmux environment, so `task` works from inside the session.
@@ -626,6 +628,27 @@ cmd_ls() {
   done < <(list_repos "$root")
 }
 
+# Workspace diagnosis ---------------------------------------------------------
+# The conventions above are enforced nowhere and fail silently — a workspace
+# that does not meet them raises no error, it just leaves the tool operating
+# on the wrong directory. Doctor states each fact and how to satisfy it.
+cmd_doctor() {
+  local root problems=0
+  root=$(resolve_root)
+  printf 'workspace: %s\n' "$root"
+
+  if [ ! -f "$root/CLAUDE.md" ]; then
+    printf '  no CLAUDE.md here — task windows will not hoist to this workspace\n'
+    printf '    fix: run /setup here, or touch %s/CLAUDE.md\n' "$root"
+    problems=$((problems + 1))
+  fi
+
+  if [ "$problems" -eq 0 ]; then
+    printf '  wired for claude-dev\n'
+  fi
+  return "$problems"
+}
+
 case "${1:-}" in
   task)   shift; cmd_task "$@" ;;
   done)   shift; cmd_done "$@" ;;
@@ -639,6 +662,7 @@ case "${1:-}" in
   serve-cmd) shift; cmd_serve_cmd "$@" ;;
   serve-ports) shift; cmd_serve_ports "$@" ;;
   ls)     shift; cmd_ls "$@" ;;
+  doctor) shift; cmd_doctor "$@" ;;
   review) shift; CLAUDE_DEV_ROOT="$(resolve_root)" exec claude-dev-review "$@" ;;
   *)      cmd_hub "$@" ;;
 esac

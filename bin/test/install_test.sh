@@ -40,6 +40,7 @@ machine() {
     printf '#!/bin/sh\n' > "$m/checkout/bin/$t"
   done
   printf '{ "skillOverrides": { "diagrams": "off" } }\n' > "$m/checkout/settings.json"
+  cp "$(dirname "$INSTALL")/statusline" "$m/checkout/bin/statusline"
   git init -q "$m/checkout"
   printf '%s' "$m"
 }
@@ -237,6 +238,37 @@ on_path() { (HOME="$1/home" CLAUDE_CONFIG_ROOT="$1/checkout" \
   PATH="$1/home/.local/bin:$PATH" bash "$INSTALL" 2>&1); }
 assert_silent_about "a bin dir already on PATH raises nothing" \
   "$(on_path "$p")" "not on PATH"
+
+# --- what the statusline will do --------------------------------------------
+# install asks the statusline what it resolved rather than reading
+# statusline.conf itself: two parsers of one small file is one too many, and
+# the one that drifts is always the one nobody is looking at.
+st=$(machine statusline)
+assert_reports "the segments in force are stated" "$(run "$st")" "5h 7d ctx turns model where"
+assert_reports "and the ramp" "$(run "$st")" "34 36 33 35"
+
+# The statusline falls back in silence — one line, no error channel — so the
+# machine report is where a rejected directive becomes visible.
+sb=$(machine statusline-fallback)
+mkdir -p "$sb/home/.claude"
+printf 'segments ctx\nramp black red green chartreuse\n' > "$sb/home/.claude/statusline.conf"
+assert_reports "a configured list is stated" "$(run "$sb")" "segments"
+assert_reports "and a directive it could not use is named" "$(run "$sb")" "fell back"
+
+# Asking the statusline must not make install wait on stdin. install is run
+# from a terminal, so a read there waits for a keystroke nobody is going to
+# press — and a test harness's stdin closes too politely to notice. A fifo
+# held open at both ends does not.
+fifo="$tmp/stdin.fifo"; mkfifo "$fifo"; exec 9<>"$fifo"
+assert_status "install never waits on stdin" \
+  "$( (timeout 5 env HOME="$st/home" CLAUDE_CONFIG_ROOT="$st/checkout" \
+        bash "$INSTALL" >/dev/null 2>&1 <&9); echo "$?" )" 0
+exec 9>&-
+
+# A checkout whose statusline cannot be run is named rather than skipped.
+nx=$(machine no-statusline)
+chmod -x "$nx/checkout/bin/statusline"
+assert_reports "a statusline that cannot run is named" "$(run "$nx")" "not executable"
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "install: all assertions passed"

@@ -133,6 +133,29 @@ set_skill() { # name=on|off
   wired "$name" "turned $value"
 }
 
+# The statusline resolves its own configuration, so ask it. Reading
+# statusline.conf here would mean a second parser of the directive names, the
+# comment rule and the colour names — and the one that drifts is always the
+# one nobody is looking at. It also reports what it had to ignore, which is
+# the part nothing outside it could work out: a status line has one line and
+# no error channel, so falling back is all it can do on its own.
+statusline_config() {
+  local sl="$ROOT/bin/statusline" key value
+  if [ ! -x "$sl" ]; then
+    section statusline "$sl"
+    warn 'statusline' 'not executable in this checkout'
+    return 0
+  fi
+  while IFS=' ' read -r key value; do
+    case "$key" in
+      config)   section statusline "$value" ;;
+      segments) ok 'segments' "$value" ;;
+      ramp)     ok 'ramp' "$value" ;;
+      ignored)  warn "$value" 'unreadable — the statusline fell back to its default' ;;
+    esac
+  done < <("$sl" --explain </dev/null)
+}
+
 SKILL=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -151,3 +174,4 @@ commit_guard
 tools_on_path
 tmux_config
 skills_off
+statusline_config

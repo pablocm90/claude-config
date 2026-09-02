@@ -37,23 +37,43 @@ commit_guard() {
   wired 'commit guard' 'core.hooksPath now .githooks'
 }
 
+# Put one file in place without replacing what is already there. A link counts
+# as ours only when it resolves to the file we mean to install: accepting one
+# by its name would report a wired machine that runs an older checkout's copy.
+# Answers 1 when the name was taken, so a caller can say what to do instead.
+link_file() { # target link label
+  if [ -L "$2" ] && [ "$(readlink -f "$2")" = "$(readlink -f "$1")" ]; then
+    ok "$3" 'already linked'
+  elif [ -e "$2" ] || [ -L "$2" ]; then
+    warn "$3" 'not ours — left alone'
+    return 1
+  else
+    ln -s "$1" "$2"
+    wired "$3" 'linked'
+  fi
+}
+
 tools_on_path() {
-  local dir="$HOME/.local/bin" t link
+  local dir="$HOME/.local/bin" t
   mkdir -p "$dir"
   printf 'bin dir:  %s\n' "$dir"
   for t in "${TOOLS[@]}"; do
-    link="$dir/$t"
-    if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$(readlink -f "$ROOT/bin/$t")" ]; then
-      ok "$t" 'already linked'
-    elif [ -e "$link" ] || [ -L "$link" ]; then
-      warn "$t" 'not ours — left alone'
-    else
-      ln -s "$ROOT/bin/$t" "$link"
-      wired "$t" 'linked'
-    fi
+    link_file "$ROOT/bin/$t" "$dir/$t" "$t" || true
   done
+}
+
+# Everything the workspace does with tmux — the prefix, the review popup, the
+# serve button, the window tabs — lives in dotfiles/tmux.conf, and none of it
+# exists until ~/.tmux.conf points at it. tmux says nothing about a config it
+# was never told about, so an unlinked machine just has no bindings.
+tmux_config() {
+  local target="$ROOT/dotfiles/tmux.conf"
+  printf 'home:     %s\n' "$HOME"
+  link_file "$target" "$HOME/.tmux.conf" 'tmux.conf' ||
+    printf '    add ours on top of it:  source %s\n' "$target"
 }
 
 printf 'checkout: %s\n' "$ROOT"
 commit_guard
 tools_on_path
+tmux_config

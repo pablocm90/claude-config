@@ -31,7 +31,8 @@ tmp=$(mktemp -d)
 # install's whole subject is state that accumulates in a home directory.
 machine() {
   local m="$tmp/$1" t
-  mkdir -p "$m/home" "$m/checkout/.githooks" "$m/checkout/bin"
+  mkdir -p "$m/home" "$m/checkout/.githooks" "$m/checkout/bin" "$m/checkout/dotfiles"
+  printf 'set -g prefix C-a\n' > "$m/checkout/dotfiles/tmux.conf"
   for t in claude-dev claude-dev-review claude-dev-status; do
     printf '#!/bin/sh\n' > "$m/checkout/bin/$t"
   done
@@ -88,6 +89,42 @@ assert_silent_about "a link into another checkout is not taken for ours" \
 assert_reports "it is named instead" "$(run "$s")" "not ours"
 assert_eq "and left pointing where it pointed" \
   "$(readlink "$s/home/.local/bin/claude-dev")" "$tmp/older/bin/claude-dev"
+
+# --- the tmux config --------------------------------------------------------
+# The prefix, the review popup, the serve button and the window tabs all live
+# in dotfiles/tmux.conf, and none of them exist until ~/.tmux.conf points at
+# it. tmux reports no error for a config it was never told about.
+tc=$(machine tmux)
+assert_reports "the home it is linked into is stated" "$(run "$tc")" "home:"
+assert_reports "an absent config is linked" "$(run "$tc")" "tmux.conf"
+assert_eq "and resolves into the checkout" \
+  "$(readlink -f "$tc/home/.tmux.conf")" \
+  "$(readlink -f "$tc/checkout/dotfiles/tmux.conf")"
+assert_reports "a second run reports it already linked" "$(run "$tc")" "already linked"
+
+# Someone else's tmux config is theirs. Replacing it to install a prefix key
+# would be the rudest thing this script could do, so it names the one line
+# that adds ours on top and stops there.
+own=$(machine own-tmux)
+printf 'set -g mouse off\n' > "$own/home/.tmux.conf"
+assert_reports "an existing config is left alone" "$(run "$own")" "not ours"
+assert_reports "and the line that adds ours is printed" \
+  "$(run "$own")" "source $own/checkout/dotfiles/tmux.conf"
+assert_eq "and their config survives" \
+  "$(cat "$own/home/.tmux.conf")" "set -g mouse off"
+
+# A ~/.tmux.conf symlinked into the machine owner's own dotfiles repo is the
+# usual arrangement, and it is still theirs — a symlink is not ours because it
+# is a symlink, only because of where it resolves.
+sym=$(machine sym-tmux)
+mkdir -p "$sym/home/dotfiles"
+printf 'set -g mouse off\n' > "$sym/home/dotfiles/tmux.conf"
+ln -s "$sym/home/dotfiles/tmux.conf" "$sym/home/.tmux.conf"
+assert_silent_about "a link into their own dotfiles is not taken for ours" \
+  "$(run "$sym")" "already linked"
+assert_reports "it is named instead" "$(run "$sym")" "not ours"
+assert_eq "and still points at their file" \
+  "$(readlink "$sym/home/.tmux.conf")" "$sym/home/dotfiles/tmux.conf"
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "install: all assertions passed"

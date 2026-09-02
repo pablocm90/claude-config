@@ -638,15 +638,24 @@ cmd_ls() {
 # The conventions above are enforced nowhere and fail silently — a workspace
 # that does not meet them raises no error, it just leaves the tool operating
 # on the wrong directory. Doctor states each fact and how to satisfy it.
+
+# Print one finding and count it. `problems` belongs to the caller: a bash local
+# is visible to the functions it calls, which is what keeps each check below a
+# single statement about a single fact.
+finding() {
+  printf '  %s\n' "$1"
+  printf '    fix: %s\n' "$2"
+  problems=$((problems + 1))
+}
+
 cmd_doctor() {
   local root problems=0 discoverable d repo ports_file
   root=$(resolve_root)
   printf 'workspace: %s\n' "$root"
 
   if [ ! -f "$root/CLAUDE.md" ]; then
-    printf '  no CLAUDE.md here — task windows will not hoist to this workspace\n'
-    printf '    fix: run /setup here, or touch %s/CLAUDE.md\n' "$root"
-    problems=$((problems + 1))
+    finding "no CLAUDE.md here — task windows will not hoist to this workspace" \
+            "run /setup here, or touch $root/CLAUDE.md"
   fi
 
   # list_repos reports its last candidate's status, not its own success.
@@ -655,9 +664,8 @@ cmd_doctor() {
     d="${d%/}"
     [ -e "$d/.git" ] || continue
     if ! grep -Fxq "$d" <<<"$discoverable"; then
-      printf '  %s has no origin remote — claude-dev does not count it as a repo\n' "$d"
-      printf '    fix: git -C %s remote add origin <url>\n' "$d"
-      problems=$((problems + 1))
+      finding "$d has no origin remote — claude-dev does not count it as a repo" \
+              "git -C $d remote add origin <url>"
     fi
   done
 
@@ -666,18 +674,15 @@ cmd_doctor() {
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     if ! git -C "$repo" check-ignore -q .claude/worktrees/any 2>/dev/null; then
-      printf '  %s does not ignore .claude/worktrees — its worktrees read as untracked\n' "$repo"
-      printf '    fix: echo .claude/worktrees/ >> %s/.gitignore\n' "$repo"
-      problems=$((problems + 1))
+      finding "$repo does not ignore .claude/worktrees — its worktrees read as untracked" \
+              "echo .claude/worktrees/ >> $repo/.gitignore"
     fi
   done <<<"$discoverable"
 
   ports_file="$root/.claude/ports"
   if [ -f "$ports_file" ] && [ -z "$(configured_ports "$ports_file")" ]; then
-    printf '  %s names no port — serve falls back to %s\n' \
-      "$ports_file" "$(serve_ports "$root")"
-    printf '    fix: name them as digits, e.g. echo '"'"'8000 5173'"'"' > %s\n' "$ports_file"
-    problems=$((problems + 1))
+    finding "$ports_file names no port — serve falls back to $(serve_ports "$root")" \
+            "name them as digits, e.g. echo '8000 5173' > $ports_file"
   fi
 
   if [ "$problems" -eq 0 ]; then

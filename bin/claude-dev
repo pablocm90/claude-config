@@ -633,7 +633,7 @@ cmd_ls() {
 # that does not meet them raises no error, it just leaves the tool operating
 # on the wrong directory. Doctor states each fact and how to satisfy it.
 cmd_doctor() {
-  local root problems=0
+  local root problems=0 discoverable d
   root=$(resolve_root)
   printf 'workspace: %s\n' "$root"
 
@@ -642,6 +642,18 @@ cmd_doctor() {
     printf '    fix: run /setup here, or touch %s/CLAUDE.md\n' "$root"
     problems=$((problems + 1))
   fi
+
+  # list_repos reports its last candidate's status, not its own success.
+  discoverable=$(list_repos "$root") || true
+  for d in "$root"/*/; do
+    d="${d%/}"
+    [ -e "$d/.git" ] || continue
+    if ! grep -Fxq "$d" <<<"$discoverable"; then
+      printf '  %s has no origin remote — claude-dev does not count it as a repo\n' "$d"
+      printf '    fix: git -C %s remote add origin <url>\n' "$d"
+      problems=$((problems + 1))
+    fi
+  done
 
   if [ "$problems" -eq 0 ]; then
     printf '  wired for claude-dev\n'

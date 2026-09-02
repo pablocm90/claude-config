@@ -9,6 +9,9 @@ set -uo pipefail
 SL="$(cd "$(dirname "$0")/.." && pwd)/statusline"
 fails=0
 
+# The turn-time cache keys on the transcript, so keep it out of the real one.
+tmp=$(mktemp -d); export TMPDIR="$tmp"
+
 assert_eq() {
   [ "$2" = "$3" ] || { echo "FAIL: $1"; echo "  expected: $3"; echo "  actual:   $2"; fails=$((fails + 1)); }
 }
@@ -78,6 +81,31 @@ hue_is 33 70 yellow
 hue_is 33 89 yellow
 hue_is 35 90 magenta
 
+# --- the turn timer ---------------------------------------------------------
+# Two answered prompts, thirty seconds and ninety. The line shows the last and
+# the mean, which only differ once there is more than one turn to average —
+# and its position, between ctx and the model, is only visible when it renders.
+tx="$tmp/transcript.jsonl"
+printf '%s\n' \
+  '{"type":"user","promptId":"p1","timestamp":"2026-01-01T00:00:00.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:00:30.000Z"}' \
+  '{"type":"user","promptId":"p2","timestamp":"2026-01-01T00:01:40.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:03:10.000Z"}' > "$tx"
+assert_eq "characterises a line carrying turn times" \
+  "$(plain "$(jq -cn --arg t "$tx" '{transcript_path:$t}')")" \
+  "5h ▰▰▰▱▱ 42% ⟳now │ 7d ▰▱▱▱▱ 8% ⟳now │ ctx 73% │ ⏱ 1m30 ⌀ 1m00 │ Opus 5·high·think │ project #42"
+
+# The timer is coloured by the last turn, not the average of them: ten
+# seconds then two hundred puts the two in different bands of the ramp.
+tx2="$tmp/spread.jsonl"
+printf '%s\n' \
+  '{"type":"user","promptId":"p1","timestamp":"2026-01-01T00:00:00.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:00:10.000Z"}' \
+  '{"type":"user","promptId":"p2","timestamp":"2026-01-01T00:01:40.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-01-01T00:05:00.000Z"}' > "$tx2"
+assert_contains "characterises the timer taking its colour from the last turn" \
+  "$(raw "$(jq -cn --arg t "$tx2" '{transcript_path:$t}')")" "$(printf '\033[33m3m20')"
+
 # --- the bar ----------------------------------------------------------------
 # Five cells, filled by rounding up, so any non-zero usage shows at least one.
 bar_at() { plain "{\"rate_limits\":{\"five_hour\":{\"used_percentage\":$1,\"resets_at\":0}}}"; }
@@ -85,5 +113,6 @@ assert_contains "characterises an empty bar at zero"  "$(bar_at 0)"   "5h ▱▱
 assert_contains "characterises rounding up from 1"    "$(bar_at 1)"   "5h ▰▱▱▱▱ 1%"
 assert_contains "characterises a full bar at 100"     "$(bar_at 100)" "5h ▰▰▰▰▰ 100%"
 
+rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "statusline characterisation: all assertions passed"
 exit "$fails"

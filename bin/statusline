@@ -113,31 +113,50 @@ turn_times() {
   printf '%s' "$turns"
 }
 
+# Which segments the line carries is a per-machine preference, so it comes
+# from an untracked ~/.claude/statusline.conf rather than the tracked checkout,
+# and the order they are named in is the order they are drawn. No file, or a
+# directive naming nothing, keeps the line as it has always been — a blank
+# statusline is indistinguishable from a broken one.
+SEGMENTS='5h 7d ctx turns model where'
+conf="$HOME/.claude/statusline.conf"
+if [ -r "$conf" ]; then
+  configured=$(sed 's/#.*//' "$conf" |
+    awk '$1 == "segments" { $1 = ""; sub(/^ +/, ""); print; exit }')
+  [ -n "$configured" ] && SEGMENTS="$configured"
+fi
+
 seg=()
-w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w")
-w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w")
-
-if [ "$ctx" != "-" ]; then
-  p=${ctx%%.*}
-  seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
-fi
-
-read -r t_last t_mean <<<"$(turn_times "$transcript")"
-if [ -n "${t_last:-}" ]; then
-  seg+=("$(printf '%s⏱%s %s%s%s %s⌀ %s%s' \
-    "$DIM" "$RESET" "$(dur_hue "$t_last")" "$(fmt_dur "$t_last")" "$RESET" \
-    "$DIM" "$(fmt_dur "$t_mean")" "$RESET")")
-fi
-
-tail_bits="$model"
-[ "$effort" != "-" ] && tail_bits+="·$effort"
-[ "$thinking" != "-" ] && tail_bits+="·think"
-seg+=("$(printf '%s%s%s' "$DIM" "$tail_bits" "$RESET")")
-
-loc="$dir"
-[ "$pr" != "-" ] && loc+=" #$pr"
-seg+=("$(printf '%s%s%s' "$DIM" "$loc" "$RESET")")
-
+for name in $SEGMENTS; do
+  case "$name" in
+    5h) w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w") ;;
+    7d) w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w") ;;
+    ctx)
+      if [ "$ctx" != "-" ]; then
+        p=${ctx%%.*}
+        seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
+      fi ;;
+    turns)
+      read -r t_last t_mean <<<"$(turn_times "$transcript")"
+      if [ -n "${t_last:-}" ]; then
+        seg+=("$(printf '%s⏱%s %s%s%s %s⌀ %s%s' \
+          "$DIM" "$RESET" "$(dur_hue "$t_last")" "$(fmt_dur "$t_last")" "$RESET" \
+          "$DIM" "$(fmt_dur "$t_mean")" "$RESET")")
+      fi ;;
+    model)
+      tail_bits="$model"
+      [ "$effort" != "-" ] && tail_bits+="·$effort"
+      [ "$thinking" != "-" ] && tail_bits+="·think"
+      seg+=("$(printf '%s%s%s' "$DIM" "$tail_bits" "$RESET")") ;;
+    where)
+      loc="$dir"
+      [ "$pr" != "-" ] && loc+=" #$pr"
+      seg+=("$(printf '%s%s%s' "$DIM" "$loc" "$RESET")") ;;
+    # A name nothing answers to is drawn, not dropped: a silently missing
+    # segment looks exactly like one whose data was absent this turn.
+    *) seg+=("$(printf '%s?%s%s' "$DIM" "$name" "$RESET")") ;;
+  esac
+done
 out=""
 for s in "${seg[@]}"; do
   [ -n "$out" ] && out+="$DIM │ $RESET"

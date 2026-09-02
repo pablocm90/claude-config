@@ -24,29 +24,48 @@ git fetch origin
 git checkout -b main --track origin/main
 ```
 
-Runtime state is untouched and `git status` comes back clean.
-
-Then put the tooling on `PATH` and load the tmux config:
+Runtime state is untouched and `git status` comes back clean. Then wire the
+checkout into the machine:
 
 ```bash
-mkdir -p ~/.local/bin
-ln -sf ~/.claude/bin/claude-dev ~/.claude/bin/claude-dev-review \
-       ~/.claude/bin/claude-dev-status ~/.local/bin/
-ln -sf ~/.claude/dotfiles/tmux.conf ~/.tmux.conf
+bin/install
 ```
 
+It states every per-machine fact and wires the ones that are not wired yet:
+the commit guard, the tools on `PATH` — and whether that directory is on
+`PATH` at all — `~/.tmux.conf`, and which skills `settings.json` has turned
+off. **It never replaces anything already on the machine.** An existing
+`~/.tmux.conf`, or a `claude-dev` someone else put on `PATH`, is named and
+left alone, with the line that adds ours printed beside it. Run it again
+whenever: it repeats nothing, and on a machine already set up it is a report.
 
-This repo is public, so a guard refuses any commit carrying a client or vendor
-name, a personal address or path, a credential, or a session id:
+One thing it cannot decide for you — the guard needs an identity to commit
+under:
 
 ```bash
-git config core.hooksPath .githooks
 git config user.email "<your-github-noreply-address>"
 ```
 
-Run it by hand with `bin/preflight`, or `bin/preflight --message <file>` to
-check a commit message too. Extend the pattern lists at the top of
-`bin/preflight` — never the habit of remembering to look.
+That guard is why: this repo is public, and `bin/install` points
+`core.hooksPath` at a hook refusing any commit that carries a client or vendor
+name, a personal address or path, a credential, or a session id. Run it by
+hand with `bin/preflight`, or `bin/preflight --message <file>` to check a
+commit message too. Extend the pattern lists at the top of `bin/preflight` —
+never the habit of remembering to look.
+
+Four skills ship off (`accessibility`, `diagrams`, `find-skills`,
+`rails-performance`). Turning one back on goes through install rather than
+`/config`:
+
+```bash
+bin/install --skill diagrams=on
+```
+
+That writes the tracked `settings.json`, because it is the only user-level
+settings file Claude Code reads — there is no user-level
+`settings.local.json`, only the per-project one. So the change is a one-line
+diff to commit or leave dirty, and machines diverge in git rather than
+silently.
 
 
 Verify:
@@ -70,7 +89,8 @@ the gitignored `plugins/`, so on a new machine confirm they resolved with
 | `fuser` (psmisc) | `claude-dev serve` | serve cannot free its ports |
 | `delta` | review pager | falls back to a plain pager |
 | `xdg-open` | opening `--html` reports | report is written, not opened |
-| `madge` + `jq` | exact TypeScript graph in `--html` | falls back to grep heuristics |
+| `madge` | exact TypeScript graph in `--html` | falls back to grep heuristics |
+| `jq` | the statusline; `bin/install` reading and changing skill overrides | statusline prints nothing, install says so and carries on |
 
 `madge` is used from the reviewed repo's own `node_modules/.bin`, never
 globally.
@@ -226,7 +246,7 @@ generate a project `CLAUDE.md`, hooks and commands.
 | `skills/` | 29 skills in four tiers; stack deltas in `resources/rails.md`, `resources/typescript.md` |
 | `agents/` | subagent definitions |
 | `commands/` | slash commands: `/setup`, `/plan`, `/cycle`, `/continue`, `/diff`, `/generate-pr-review` |
-| `bin/` | `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
+| `bin/` | `install` (wire a machine), `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
 | `bin/lib/refs.sh` | reference heuristics shared by the review and its tests |
 | `bin/test/` | behaviour tests for the tooling |
 | `dotfiles/tmux.conf` | prefix `C-a`; `prefix+D` status, `prefix+r` review, `prefix+S` serve |
@@ -247,4 +267,5 @@ Honest limits, so nothing surprises you on a new stack:
   assumed. macOS needs `coreutils` and `psmisc`, with `PATH` set so the GNU
   versions win.
 - **`settings.json` turns four skills off** (`accessibility`, `diagrams`,
-  `find-skills`, `rails-performance`). Re-enable in `/config` if you want them.
+  `find-skills`, `rails-performance`). `bin/install --skill <name>=on` turns
+  one back on; see [Install](#install) for why that lands in a tracked file.

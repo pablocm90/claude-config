@@ -3,6 +3,59 @@
 # Fed the session JSON on stdin by Claude Code (settings.json -> statusLine).
 set -uo pipefail
 
+# Four colours, lowest band first. The default is daltonised: blue → cyan →
+# yellow → magenta, deliberately with no red/green axis. A machine that reads
+# colour differently names its own four in statusline.conf, and both ramps
+# draw from them — one palette, two sets of thresholds.
+#
+# Resolved before the session is read, because none of it depends on one —
+# which is what lets --explain answer without being fed anything.
+RAMP=(34 36 33 35)
+
+colour_code() {
+  case "$1" in
+    black) printf 30 ;; red)     printf 31 ;; green) printf 32 ;; yellow) printf 33 ;;
+    blue)  printf 34 ;; magenta) printf 35 ;; cyan)  printf 36 ;; white)  printf 37 ;;
+    *) return 1 ;;
+  esac
+}
+
+SEGMENTS='5h 7d ctx turns model where'
+conf="$HOME/.claude/statusline.conf"
+directive() { sed 's/#.*//' "$conf" | awk -v k="$1" '$1 == k { $1 = ""; sub(/^ +/, ""); print; exit }'; }
+IGNORED=''
+
+if [ -r "$conf" ]; then
+  configured=$(directive segments)
+  [ -n "$configured" ] && SEGMENTS="$configured"
+
+  # Four names or none: a ramp that cannot be read in full leaves the default
+  # standing, so a typo shows up as nothing changing rather than as one band
+  # quietly painted the wrong colour. What was ignored is remembered, because
+  # falling back in silence is exactly what --explain exists to break.
+  configured=$(directive ramp)
+  if [ -n "$configured" ]; then
+    read -r -a names <<<"$configured"
+    codes=()
+    for n in "${names[@]}"; do c=$(colour_code "$n") && codes+=("$c"); done
+    if [ "${#names[@]}" -eq 4 ] && [ "${#codes[@]}" -eq 4 ]; then
+      RAMP=("${codes[@]}")
+    else
+      IGNORED='ramp'
+    fi
+  fi
+fi
+
+# What this machine's statusline will do, for anything that would otherwise
+# have to parse statusline.conf a second time and drift from this.
+if [ "${1:-}" = --explain ]; then
+  printf 'config %s\n'   "$conf"
+  printf 'segments %s\n' "$SEGMENTS"
+  printf 'ramp %s\n'     "${RAMP[*]}"
+  [ -n "$IGNORED" ] && printf 'ignored %s\n' "$IGNORED"
+  exit 0
+fi
+
 input=$(cat)
 
 IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir branch pr transcript <<<"$(
@@ -26,20 +79,6 @@ IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir 
 [ -z "${model:-}" ] && exit 0
 
 DIM=$'\033[2m'; RESET=$'\033[0m'
-
-# Four colours, lowest band first. The default is daltonised: blue → cyan →
-# yellow → magenta, deliberately with no red/green axis. A machine that reads
-# colour differently names its own four in statusline.conf, and both ramps
-# below draw from them — one palette, two sets of thresholds.
-RAMP=(34 36 33 35)
-
-colour_code() {
-  case "$1" in
-    black) printf 30 ;; red)     printf 31 ;; green) printf 32 ;; yellow) printf 33 ;;
-    blue)  printf 34 ;; magenta) printf 35 ;; cyan)  printf 36 ;; white)  printf 37 ;;
-    *) return 1 ;;
-  esac
-}
 
 # Which of the four bands a value falls in. A value that is not a number sinks
 # to the lowest band rather than colouring the line by accident.
@@ -129,25 +168,6 @@ turn_times() {
 # and the order they are named in is the order they are drawn. No file, or a
 # directive naming nothing, keeps the line as it has always been — a blank
 # statusline is indistinguishable from a broken one.
-SEGMENTS='5h 7d ctx turns model where'
-conf="$HOME/.claude/statusline.conf"
-directive() { sed 's/#.*//' "$conf" | awk -v k="$1" '$1 == k { $1 = ""; sub(/^ +/, ""); print; exit }'; }
-
-if [ -r "$conf" ]; then
-  configured=$(directive segments)
-  [ -n "$configured" ] && SEGMENTS="$configured"
-
-  # Four names or none: a ramp that cannot be read in full leaves the default
-  # standing, so a typo shows up as nothing changing rather than as one band
-  # quietly painted the wrong colour.
-  configured=$(directive ramp)
-  if [ -n "$configured" ]; then
-    read -r -a names <<<"$configured"
-    codes=()
-    for n in "${names[@]}"; do c=$(colour_code "$n") && codes+=("$c"); done
-    [ "${#names[@]}" -eq 4 ] && [ "${#codes[@]}" -eq 4 ] && RAMP=("${codes[@]}")
-  fi
-fi
 
 seg=()
 for name in $SEGMENTS; do

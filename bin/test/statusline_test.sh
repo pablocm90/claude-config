@@ -109,6 +109,32 @@ conf 'ramping black red green yellow\nsegments ctx\n'
 assert_contains "a longer directive name is not the directive" \
   "$(raw)" "$(printf '\033[33m73%%')"
 
+# --- explaining itself ------------------------------------------------------
+# Anything else that wants to know what the statusline will do has to ask it,
+# rather than parse this file a second time and drift. Fed no session at all:
+# what it resolved does not depend on one.
+explain() { HOME="$home" bash "$SL" --explain </dev/null; }
+
+noconf
+assert_eq "explains the default segments" "$(explain | grep '^segments')" \
+  "segments 5h 7d ctx turns model where"
+assert_eq "explains the default ramp" "$(explain | grep '^ramp')" "ramp 34 36 33 35"
+
+conf 'segments ctx model\nramp black red green yellow\n'
+assert_eq "explains configured segments" "$(explain | grep '^segments')" "segments ctx model"
+assert_eq "explains a configured ramp as the codes it will use" \
+  "$(explain | grep '^ramp')" "ramp 30 31 32 33"
+
+# The directive it could not use is the whole point: statusline falls back in
+# silence, and silence is what something else has to be able to see.
+conf 'segments ctx\nramp black red green chartreuse\n'
+assert_contains "names a directive it fell back on" "$(explain)" "ignored ramp"
+assert_eq "and reports the ramp actually in force" "$(explain | grep '^ramp')" "ramp 34 36 33 35"
+
+conf 'segments ctx\nramp black red green yellow\n'
+assert_eq "with nothing ignored, it says nothing about it" \
+  "$(explain | grep -c '^ignored')" "0"
+
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "statusline: all assertions passed"
 exit "$fails"

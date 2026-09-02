@@ -7,13 +7,21 @@
 # Idempotent by contract: it is run once on a fresh machine and again on one
 # already set up, so it states what it finds before changing anything, and
 # changes only what is missing. `claude-dev doctor` does this for a workspace;
-# this does it for the machine.
+# this does it for the machine. Nothing already on the machine is replaced.
 set -euo pipefail
 
 ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
-ok()    { printf '  \033[2m✓\033[0m %-18s %s\n' "$1" "$2"; }
-wired() { printf '  \033[2m→\033[0m %-18s %s\n' "$1" "$2"; }
+# The tools invoked by name — from a shell, from the tmux bindings, from
+# Claude. statusline is not among them: settings.json names it by absolute
+# path. Neither is preflight, which is run as bin/preflight in the checkout.
+TOOLS=(claude-dev claude-dev-review claude-dev-status)
+
+# One line per fact: a dim glyph, the thing, what is true of it.
+line()  { printf '  \033[2m%s\033[0m %-18s %s\n' "$1" "$2" "$3"; }
+ok()    { line ✓ "$1" "$2"; }
+wired() { line → "$1" "$2"; }
+warn()  { line ! "$1" "$2"; }
 
 # The repo is public and .githooks/pre-commit refuses any commit carrying a
 # client name, a credential or a personal path — but only once core.hooksPath
@@ -29,5 +37,23 @@ commit_guard() {
   wired 'commit guard' 'core.hooksPath now .githooks'
 }
 
+tools_on_path() {
+  local dir="$HOME/.local/bin" t link
+  mkdir -p "$dir"
+  printf 'bin dir:  %s\n' "$dir"
+  for t in "${TOOLS[@]}"; do
+    link="$dir/$t"
+    if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$(readlink -f "$ROOT/bin/$t")" ]; then
+      ok "$t" 'already linked'
+    elif [ -e "$link" ] || [ -L "$link" ]; then
+      warn "$t" 'not ours — left alone'
+    else
+      ln -s "$ROOT/bin/$t" "$link"
+      wired "$t" 'linked'
+    fi
+  done
+}
+
 printf 'checkout: %s\n' "$ROOT"
 commit_guard
+tools_on_path

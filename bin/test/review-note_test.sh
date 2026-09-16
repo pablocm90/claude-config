@@ -253,6 +253,16 @@ assert_eq "the two hunk counts are not interchangeable" \
   "## src/useGroup.ts
 this could be one destructure"
 
+# The epilogue offers "[n]ote in <editor>", so it needs the name the reviewer
+# would recognise — not the literal '$EDITOR', and not the flags or the path
+# they happen to have configured around it.
+assert_eq "the editor's name is its bare command" \
+  "$(VISUAL= EDITOR=nano editor_name)" "nano"
+assert_eq "a path and flags are not part of the name" \
+  "$(VISUAL= EDITOR='/usr/bin/gedit --wait' editor_name)" "gedit"
+assert_eq "with nothing set the name is the fallback" \
+  "$(unset VISUAL EDITOR; editor_name)" "vi"
+
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "review-note: all tests passed"
 exit $((fails > 0))

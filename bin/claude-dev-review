@@ -344,7 +344,7 @@ review_epilogue() {
   while read -r -t 0.05 -N 1000 junk; do :; done
   ts=$(date '+%Y-%m-%d %H:%M')
   while :; do
-    printf '\n%sReview of %s%s — [a]pprove / [n]ote in $EDITOR / Enter to skip: ' "$BOLD" "$SLUG" "$RESET"
+    printf '\n%sReview of %s%s — [a]pprove / [n]ote in %s / Enter to skip: ' "$BOLD" "$SLUG" "$RESET" "$(editor_name)"
     IFS= read -r -N 1 ans || return 0
     case "$ans" in
       a|A)

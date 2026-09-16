@@ -18,13 +18,21 @@ review_editor() {
   printf '%s' "${VISUAL:-${EDITOR:-vi}}"
 }
 
+# The name the reviewer would recognise, with the path and any flags stripped.
+# The epilogue offers "[n]ote in <editor>": printing the literal '$EDITOR' there
+# tells someone who has never set it nothing at all, and someone who has set it
+# to a path or a flagged command the wrong thing.
+editor_name() {
+  local cmd
+  cmd=$(review_editor)
+  basename "${cmd%% *}"
+}
+
 # How to leave that editor, in its own idiom. The reviewer is dropped into it
 # by a popup rather than opening it themselves, so "how do I save this" is
 # exactly where a note gets abandoned.
 save_hint() {
-  local cmd
-  cmd=$(review_editor)
-  case "$(basename "${cmd%% *}")" in
+  case "$(editor_name)" in
     vi|vim|nvim|view)  printf 'Save and quit (:wq, or :cq to cancel)' ;;
     nano|pico)         printf 'Save and quit (Ctrl-O, Enter, Ctrl-X)' ;;
     emacs|emacsclient) printf 'Save and quit (C-x C-s, C-x C-c)' ;;

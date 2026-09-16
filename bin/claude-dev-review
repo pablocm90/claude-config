@@ -355,7 +355,7 @@ review_epilogue() {
         ;;
       n|N)
         printf '\n'
-        scaffold="$dir/$SLUG.scaffold.md"
+        scaffold="$dir/$SLUG.scaffold.diff"
         note_scaffold < "$NOTE_DIFF" > "$scaffold"
         note=$(capture_note "$scaffold"); rc=$?
         rm -f "$scaffold"

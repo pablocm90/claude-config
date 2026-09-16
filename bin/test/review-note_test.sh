@@ -15,29 +15,77 @@ assert_eq() {
 
 tmp=$(mktemp -d)
 
+cat > "$tmp/diff" <<'EOF'
+diff --git a/src/useGroup.ts b/src/useGroup.ts
+index 1234567..89abcde 100644
+--- a/src/useGroup.ts
++++ b/src/useGroup.ts
+@@ -12,1 +12,1 @@
+-  const g = data?.group
++  const g = data.group
+EOF
+
+# --- the scaffold the reviewer is handed -------------------------------------
+# The file is a diff, not markdown: every editor colours diff natively, while
+# markdown fences are only coloured by editors that inject the fenced language
+# (gedit's GtkSourceView does not). Git's own framing says nothing a reviewer
+# acts on, so only the path survives, as a heading.
+assert_eq "the scaffold is a plain diff under a file heading" \
+  "$(note_scaffold < "$tmp/diff" | grep -v '^# ' | grep -v '^$')" \
+  '## src/useGroup.ts
+@@ -12,1 +12,1 @@
+-  const g = data?.group
++  const g = data.group'
+
 # --- what comes back ---------------------------------------------------------
+# A hunk declares its own length, so the end of the diff body is known exactly.
+# That is what lets a comment start with any character at all — including the
+# '-' of a bullet list, which a prefix rule would have swallowed as a deletion.
+cat > "$tmp/bullet" <<'EOF'
+## src/useGroup.ts
+@@ -12,1 +12,1 @@
+-  const g = data?.group
++  const g = data.group
+- data is undefined while pending
+- placeholderData won't save you, it's pending-only
+EOF
+
+assert_eq "a comment may start with a diff character" \
+  "$(note_comments "$tmp/bullet")" \
+  "## src/useGroup.ts
+- data is undefined while pending
+- placeholderData won't save you, it's pending-only"
+
+# A hunk header without counts means one line each; miscounting it would eat
+# the reviewer's first sentence.
+cat > "$tmp/nocount" <<'EOF'
+## src/useGroup.ts
+@@ -12 +12 @@
+-  const g = data?.group
++  const g = data.group
+this needs a pending guard
+EOF
+
+assert_eq "a countless hunk header means one line each" \
+  "$(note_comments "$tmp/nocount")" \
+  "## src/useGroup.ts
+this needs a pending guard"
+
 # Only files the reviewer wrote under should come back: a heading they skipped
 # is noise that would have Claude hunting for a comment that isn't there.
 cat > "$tmp/skipped" <<'EOF'
-<!-- Write comments under the file they are about. -->
+# Write your comments under the file they are about.
 
 ## src/GroupClients.tsx
-
-```diff
-@@ -41,7 +41,7 @@
+@@ -41,1 +41,1 @@
 -  if (!group?.id) return null
 +  if (!group) return <Forbidden />
-```
-
 this returns 403 for a groupless admin too
 
 ## src/useGroup.ts
-
-```diff
-@@ -12,3 +12,3 @@
+@@ -12,1 +12,1 @@
 -  const g = data?.group
 +  const g = data.group
-```
 EOF
 
 assert_eq "only commented files come back" \
@@ -45,108 +93,92 @@ assert_eq "only commented files come back" \
   "## src/GroupClients.tsx
 this returns 403 for a groupless admin too"
 
-# A comment worth writing is usually longer than one line. The heading names
-# the file once; repeating it per line would read as separate findings.
-cat > "$tmp/multiline" <<'EOF'
-## src/useGroup.ts
+# The header is instructions, not content — but only at the top. After a file
+# heading a '#' line is the reviewer writing about a shell script or a comment.
+cat > "$tmp/hash" <<'EOF'
+# Write your comments under the file they are about.
 
-```diff
--  const g = data?.group
-+  const g = data.group
-```
-
-data is undefined while the query is pending.
-placeholderData won't save you here — it's pending-only.
+## bin/thing.sh
+@@ -1,1 +1,1 @@
+-set -e
++set -uo pipefail
+#!/usr/bin/env bash is missing from this file
 EOF
 
-assert_eq "a multi-line comment keeps one heading" \
-  "$(note_comments "$tmp/multiline")" \
-  "## src/useGroup.ts
-data is undefined while the query is pending.
-placeholderData won't save you here — it's pending-only."
+assert_eq "a hash line after a heading is the reviewer's" \
+  "$(note_comments "$tmp/hash")" \
+  "## bin/thing.sh
+#!/usr/bin/env bash is missing from this file"
 
-# Not every remark is about a file. A note written above the first heading is
-# about the stride as a whole, and must arrive without a heading of its own.
+# A remark written above the first heading is about the stride as a whole.
 cat > "$tmp/preamble" <<'EOF'
-<!-- Write comments under the file they are about. -->
+# Write your comments under the file they are about.
 
 split this into two commits
 
 ## src/useGroup.ts
-
-```diff
+@@ -12,1 +12,1 @@
+-  const g = data?.group
 +  const g = data.group
-```
 EOF
 
 assert_eq "a remark above the first heading has no heading" \
   "$(note_comments "$tmp/preamble")" \
   "split this into two commits"
 
-# A diff line that looks like prose must stay inside the fence. Without fence
-# tracking, a removed markdown heading in the diff would arrive as a comment.
-cat > "$tmp/lookalike" <<'EOF'
-## README.md
-
-```diff
--## Installation
--run the thing
-```
-
-keep the install section
-EOF
-
-assert_eq "diff content that looks like prose stays quoted" \
-  "$(note_comments "$tmp/lookalike")" \
-  "## README.md
-keep the install section"
-
-# --- the scaffold the reviewer is handed -------------------------------------
-# Git's own framing (index/---/+++ lines) says nothing a reviewer acts on and
-# pushes the hunks off the first screen. The diff goes in a ```diff fence so the
-# editor colours it, under the file name as a heading they can write beneath.
-cat > "$tmp/diff" <<'EOF'
-diff --git a/src/useGroup.ts b/src/useGroup.ts
-index 1234567..89abcde 100644
---- a/src/useGroup.ts
-+++ b/src/useGroup.ts
-@@ -12,3 +12,3 @@
--  const g = data?.group
-+  const g = data.group
-EOF
-
-assert_eq "the scaffold fences each file's hunks under its name" \
-  "$(note_scaffold < "$tmp/diff" | grep -v '^$' | grep -v '^<!--')" \
-  '## src/useGroup.ts
-```diff
-@@ -12,3 +12,3 @@
--  const g = data?.group
-+  const g = data.group
-```'
-
-# The header has to say how to leave the editor — the reviewer is dropped into
-# it by a popup, and "how do I save this" is where the note gets abandoned.
-assert_eq "the header names the save keys for this editor" \
-  "$(EDITOR=nano note_scaffold < "$tmp/diff" | grep -c 'Ctrl-O')" "1"
-assert_eq "an unknown editor still gets an instruction" \
-  "$(EDITOR=acme note_scaffold < "$tmp/diff" | grep -c 'Save and close')" "1"
-
-# The two halves have to agree: whatever the scaffold writes must be invisible
-# to extraction, or the note arrives buried in a copy of the diff.
+# The two halves have to agree, for one file and for many: an untouched
+# scaffold must carry nothing back, or the note arrives buried in the diff.
 note_scaffold < "$tmp/diff" > "$tmp/roundtrip"
 assert_eq "an untouched scaffold extracts to nothing" \
   "$(note_comments "$tmp/roundtrip")" ""
 
+cat > "$tmp/two-files" <<'EOF'
+diff --git a/src/useGroup.ts b/src/useGroup.ts
+index 1234567..89abcde 100644
+--- a/src/useGroup.ts
++++ b/src/useGroup.ts
+@@ -12,1 +12,1 @@
+-  const g = data?.group
++  const g = data.group
+diff --git a/src/GroupClients.tsx b/src/GroupClients.tsx
+index 2345678..9abcdef 100644
+--- a/src/GroupClients.tsx
++++ b/src/GroupClients.tsx
+@@ -41,1 +41,1 @@
+-  if (!group?.id) return null
++  if (!group) return <Forbidden />
+EOF
+
+note_scaffold < "$tmp/two-files" > "$tmp/two-roundtrip"
+assert_eq "a two-file scaffold still extracts to nothing" \
+  "$(note_comments "$tmp/two-roundtrip")" ""
+
+# --- naming the way out ------------------------------------------------------
+# The reviewer is dropped into the editor by a popup rather than opening it
+# themselves, so "how do I save this" is where a note gets abandoned. The hint
+# has to survive an $EDITOR carrying flags, which gedit and code both need.
+assert_eq "the hint reads through a flag-carrying editor" \
+  "$(EDITOR='gedit --wait' save_hint)" "Save and close (Ctrl-S, Ctrl-W)"
+assert_eq "an unknown editor still gets an instruction" \
+  "$(EDITOR=acme save_hint)" "Save and close"
+
+# VISUAL outranks EDITOR by long convention: it names the full-screen editor to
+# use when there is a display, which is exactly this case.
+assert_eq "VISUAL outranks EDITOR" \
+  "$(VISUAL=nano EDITOR=vim save_hint)" "Save and quit (Ctrl-O, Enter, Ctrl-X)"
+
 # --- handing it to the editor ------------------------------------------------
 cat > "$tmp/fake-editor" <<'ED'
 #!/usr/bin/env bash
-printf 'this drops the pending guard\n' >> "$1"
+# Only ever invoked as `fake-editor --flag <file>`, to pin the word splitting.
+[ "$1" = "--flag" ] || { echo "lost the flag" >&2; exit 2; }
+printf 'this drops the pending guard\n' >> "$2"
 ED
 chmod +x "$tmp/fake-editor"
 
 note_scaffold < "$tmp/diff" > "$tmp/edited"
-assert_eq "capture_note returns what the editor left behind" \
-  "$(EDITOR="$tmp/fake-editor" capture_note "$tmp/edited")" \
+assert_eq "capture_note runs an editor that carries flags" \
+  "$(EDITOR="$tmp/fake-editor --flag" capture_note "$tmp/edited")" \
   "## src/useGroup.ts
 this drops the pending guard"
 
@@ -157,8 +189,7 @@ assert_eq "closing the editor untouched yields nothing" \
   "$(EDITOR=true capture_note "$tmp/unedited")" ""
 
 # An editor that fails must not read as "the reviewer said nothing" — the note
-# would vanish and the stride would clear as if it had been answered. This is
-# also how :cq cancels out of vim.
+# would vanish and the stride would clear as if it had been answered.
 cat > "$tmp/broken-editor" <<'ED'
 #!/usr/bin/env bash
 printf 'half a thought\n' >> "$1"
@@ -170,29 +201,57 @@ note_scaffold < "$tmp/diff" > "$tmp/broken"
 EDITOR="$tmp/broken-editor" capture_note "$tmp/broken" >/dev/null 2>&1
 assert_eq "a failing editor reports failure" "$?" "1"
 
-# Most strides touch more than one file, and each file opens a fence. Unless the
-# previous one is closed first, the second ```diff toggles the fence shut and
-# that file's entire diff arrives as if the reviewer had typed it.
-cat > "$tmp/two-files" <<'EOF'
-diff --git a/src/useGroup.ts b/src/useGroup.ts
-index 1234567..89abcde 100644
---- a/src/useGroup.ts
-+++ b/src/useGroup.ts
-@@ -12,3 +12,3 @@
+# Real hunks are longer than one line and mostly context. Taking the declared
+# length seriously is what keeps the count honest across them; treating every
+# hunk as one line would hand back the rest of the diff as the reviewer's.
+cat > "$tmp/context" <<'EOF'
+## src/useGroup.ts
+@@ -10,3 +10,3 @@
+ const before = 1
 -  const g = data?.group
 +  const g = data.group
-diff --git a/src/GroupClients.tsx b/src/GroupClients.tsx
-index 2345678..9abcdef 100644
---- a/src/GroupClients.tsx
-+++ b/src/GroupClients.tsx
-@@ -41,7 +41,7 @@
--  if (!group?.id) return null
-+  if (!group) return <Forbidden />
+ const after = 2
+needs a pending guard
 EOF
 
-note_scaffold < "$tmp/two-files" > "$tmp/two-roundtrip"
-assert_eq "a two-file scaffold still extracts to nothing" \
-  "$(note_comments "$tmp/two-roundtrip")" ""
+assert_eq "context lines are counted on both sides" \
+  "$(note_comments "$tmp/context")" \
+  "## src/useGroup.ts
+needs a pending guard"
+
+# Git emits the no-newline marker after the last line of a hunk, by which point
+# the declared counts are spent — so it has to be recognised on its own, or it
+# arrives as the reviewer's opening sentence.
+cat > "$tmp/nonewline" <<'EOF'
+## src/thing.txt
+@@ -1,1 +1,1 @@
+-old line
++new line
+\ No newline at end of file
+this file wants a trailing newline
+EOF
+
+assert_eq "the no-newline marker is not a comment" \
+  "$(note_comments "$tmp/nonewline")" \
+  "## src/thing.txt
+this file wants a trailing newline"
+
+# A hunk that adds lines declares different counts for its two sides, which is
+# what most commits look like. Reading them in the wrong order runs the count
+# past the end of the hunk and swallows the comment underneath.
+cat > "$tmp/asymmetric" <<'EOF'
+## src/useGroup.ts
+@@ -10,1 +10,3 @@
+ const before = 1
++  const a = 1
++  const b = 2
+this could be one destructure
+EOF
+
+assert_eq "the two hunk counts are not interchangeable" \
+  "$(note_comments "$tmp/asymmetric")" \
+  "## src/useGroup.ts
+this could be one destructure"
 
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "review-note: all tests passed"

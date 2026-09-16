@@ -315,29 +315,36 @@ Before submitting PR:
 - [ ] PRs focused on single feature or fix
 - [ ] Include behavior description (not implementation details)
 
+**The description is a stride note scaled to a PR, not a report.** A 400-word body is skipped whole; the sentences that get read are the headline, the deploy order and the open questions. Write a **headline line** — ≤ 15 words, no label, what changes for the product or the developer — then a blank line, then only the labels that have something to say, as one bullet each, in this order:
+
+- `**Where**` — plan slice or ticket, and the companion PR in a sibling repo.
+- `**Why**` — the decision a reader can't infer from the diff: why this shape and not the obvious alternative.
+- `**Ship**` — deploy order, migration, flag, backfill: anything that must not be missed at merge time.
+- `**Look at**` — the hunk most worth attention, or the judgement call you're least sure of.
+- `**Not done**` — deferred work and open questions, so they aren't reported back as missing.
+- `**Green**` — suites run, the gate, any live verification. Name a surviving mutant only when it is a real gap.
+
+**Budget: 150 words, at most 30 per label.** Omit a label rather than pad it. No connective prose. CI proves the tests pass; per-commit RED/GREEN evidence and mutant tables belong in the commit bodies. If a reviewer will need them without leaving the PR, put them in one collapsed `<details><summary>Evidence</summary>` block under the note — never inline.
+
 **Example PR Description:**
 
 ```markdown
-## Summary
+Stop serving paid_rate and per-bucket share from paid_by_reminder; nothing reads them.
 
-Adds support for user role-based permissions with configurable access levels.
+- **Where** Follow-up to frontend#421, which moved this arithmetic client-side. Backend only.
+- **Why** The served share used a different denominator than the displayed one, so it was a trap, not a spare.
+- **Ship** Merge frontend#421 first. Deployed the other way round the card goes blank, not loud.
+- **Look at** population_totals now sums both keys through one helper; check it still counts the open buckets.
+- **Green** 55 service + controller tests, bin/check 6/6. Hand mutants 5/6 killed; the survivor is equivalent, one open row max.
 
-## Behavior Changes
+<details><summary>Evidence</summary>
 
-- Users can now have multiple roles with fine-grained permissions
-- Permission check via `hasPermission(user, resource, action)`
-- Default role assigned if not specified
+| mutant | result |
+|---|---|
+| population_totals(steps) — drops the open buckets | killed (4 failures) |
+| open_rows.first → .last | survived — equivalent, at most one nil-step group |
 
-## Test Evidence
-
-✅ 42/42 tests passing
-✅ 100% coverage verified (see coverage report)
-
-## TDD Evidence
-
-RED: commit 4a3b2c1 (failing tests for permission system)
-GREEN: commit 5d4e3f2 (implementation)
-REFACTOR: commit 6e5f4a3 (extract permission resolution logic)
+</details>
 ```
 
 ---

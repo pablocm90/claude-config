@@ -24,29 +24,78 @@ git fetch origin
 git checkout -b main --track origin/main
 ```
 
-Runtime state is untouched and `git status` comes back clean.
-
-Then put the tooling on `PATH` and load the tmux config:
+Runtime state is untouched and `git status` comes back clean. Then wire the
+checkout into the machine:
 
 ```bash
-mkdir -p ~/.local/bin
-ln -sf ~/.claude/bin/claude-dev ~/.claude/bin/claude-dev-review \
-       ~/.claude/bin/claude-dev-status ~/.local/bin/
-ln -sf ~/.claude/dotfiles/tmux.conf ~/.tmux.conf
+bin/install
 ```
 
+It states every per-machine fact and wires the ones that are not wired yet:
+the commit guard, the tools on `PATH` — and whether that directory is on
+`PATH` at all — `~/.tmux.conf`, and which skills `settings.json` has turned
+off. **It never replaces anything already on the machine.** An existing
+`~/.tmux.conf`, or a `claude-dev` someone else put on `PATH`, is named and
+left alone, with the line that adds ours printed beside it. Run it again
+whenever: it repeats nothing, and on a machine already set up it is a report.
 
-This repo is public, so a guard refuses any commit carrying a client or vendor
-name, a personal address or path, a credential, or a session id:
+One thing it cannot decide for you — the guard needs an identity to commit
+under:
 
 ```bash
-git config core.hooksPath .githooks
 git config user.email "<your-github-noreply-address>"
 ```
 
-Run it by hand with `bin/preflight`, or `bin/preflight --message <file>` to
-check a commit message too. Extend the pattern lists at the top of
-`bin/preflight` — never the habit of remembering to look.
+That guard is why: this repo is public, and `bin/install` points
+`core.hooksPath` at a hook refusing any commit that carries a client or vendor
+name, a personal address or path, a credential, or a session id. Run it by
+hand with `bin/preflight`, or `bin/preflight --message <file>` to check a
+commit message too. Extend the pattern lists at the top of `bin/preflight` —
+never the habit of remembering to look.
+
+Four skills ship off (`accessibility`, `diagrams`, `find-skills`,
+`rails-performance`). Turning one back on goes through install rather than
+`/config`:
+
+```bash
+bin/install --skill diagrams=on
+```
+
+That writes the tracked `settings.json`, because it is the only user-level
+settings file Claude Code reads — there is no user-level
+`settings.local.json`, only the per-project one. So the change is a one-line
+diff to commit or leave dirty, and machines diverge in git rather than
+silently.
+
+The statusline is per-machine too, and unlike the skills it answers to nothing
+but itself — so it reads an untracked `~/.claude/statusline.conf`, which the
+allowlist already ignores. Both directives are optional; with no file at all
+the line is what it has always been:
+
+```
+segments 5h 7d ctx turns model where
+ramp     blue cyan yellow magenta
+```
+
+`segments` chooses which parts of the line appear **and the order they appear
+in**. A name nothing answers to is drawn as `?name` rather than dropped: a
+segment that vanishes on a typo looks exactly like one whose data was absent
+that turn.
+
+`ramp` names four colours lowest-band-first, from `black red green yellow blue
+magenta cyan white`. Both ramps draw from them — the percentage bands
+(40/70/90) and the turn timer's (1m/3m/10m) keep their own thresholds but
+share the palette. Four names or none: a ramp naming three, or five, or one
+colour nothing knows leaves the default standing, so a typo reads as nothing
+having changed rather than as one band quietly painted wrong.
+
+The default is daltonised on purpose — blue → cyan → yellow → magenta, with no
+red/green axis. It is hard-coded for nobody now, which matters most for the
+people it was never right for.
+
+`bin/install` reports what the statusline resolved, naming any directive it had
+to ignore — the statusline falls back in silence, having one line and no error
+channel. Ask it directly with `bin/statusline --explain`.
 
 
 Verify:
@@ -70,7 +119,8 @@ the gitignored `plugins/`, so on a new machine confirm they resolved with
 | `fuser` (psmisc) | `claude-dev serve` | serve cannot free its ports |
 | `delta` | review pager | falls back to a plain pager |
 | `xdg-open` | opening `--html` reports | report is written, not opened |
-| `madge` + `jq` | exact TypeScript graph in `--html` | falls back to grep heuristics |
+| `madge` | exact TypeScript graph in `--html` | falls back to grep heuristics |
+| `jq` | the statusline; `bin/install` reading and changing skill overrides | statusline prints nothing, install says so and carries on |
 
 `madge` is used from the reviewed repo's own `node_modules/.bin`, never
 globally.
@@ -131,6 +181,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |
 | `claude-dev ls` | task windows and worktrees |
+| `claude-dev doctor` | check the workspace against the conventions the rest of the tool assumes; exits on the number of findings |
 | `claude-dev done <slug>` | remove the window and worktree; refuses if dirty |
 | `claude-dev prune [--yes]` | remove clean worktrees whose PR is merged or closed |
 
@@ -186,7 +237,13 @@ green when it is this window, grey when another task has it.
 
 ## Wiring a new project
 
-The framework is generic; four things are per-project.
+The framework is generic; four things are per-project. `claude-dev doctor`
+names the ones a workspace has not done yet, each with the command that
+satisfies it, because every one of them fails silently — an unmarked root, a
+repo with no origin remote, an unignored worktree directory, a ports file that
+names no port. None of those raises an error; they just leave the tool looking
+as though it had forgotten a repo existed. Run it once in a new workspace, and
+again whenever something behaves that way.
 
 **The pre-push gate.** `mmmss-stride` requires one fast static gate before a
 push and defers to the project for the command. Name it in the project's
@@ -201,9 +258,12 @@ echo '8000 5173'          > <workspace>/.claude/ports   # default: 3000 4000
 ```
 
 Ask what it resolved with `claude-dev serve-cmd` and `claude-dev serve-ports`.
+A ports file that survives comment-stripping with no digits left in it counts
+as absent, and serving quietly falls back to 3000/4000; doctor reports that.
 
 **Worktrees.** `claude-dev task <slug>` cuts them at
-`<repo>/.claude/worktrees/<slug>`; gitignore `.claude/` in the project.
+`<repo>/.claude/worktrees/<slug>`; gitignore that path in the project — not
+`.claude/` wholesale, which would take the `serve` file above with it.
 
 **Onboarding.** Run `/setup` inside a new project to detect its stack and
 generate a project `CLAUDE.md`, hooks and commands.
@@ -216,7 +276,7 @@ generate a project `CLAUDE.md`, hooks and commands.
 | `skills/` | 29 skills in four tiers; stack deltas in `resources/rails.md`, `resources/typescript.md` |
 | `agents/` | subagent definitions |
 | `commands/` | slash commands: `/setup`, `/plan`, `/cycle`, `/continue`, `/diff`, `/generate-pr-review` |
-| `bin/` | `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
+| `bin/` | `install` (wire a machine), `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
 | `bin/lib/refs.sh` | reference heuristics shared by the review and its tests |
 | `bin/test/` | behaviour tests for the tooling |
 | `dotfiles/tmux.conf` | prefix `C-a`; `prefix+D` status, `prefix+r` review, `prefix+S` serve |
@@ -237,4 +297,5 @@ Honest limits, so nothing surprises you on a new stack:
   assumed. macOS needs `coreutils` and `psmisc`, with `PATH` set so the GNU
   versions win.
 - **`settings.json` turns four skills off** (`accessibility`, `diagrams`,
-  `find-skills`, `rails-performance`). Re-enable in `/config` if you want them.
+  `find-skills`, `rails-performance`). `bin/install --skill <name>=on` turns
+  one back on; see [Install](#install) for why that lands in a tracked file.

@@ -3,6 +3,59 @@
 # Fed the session JSON on stdin by Claude Code (settings.json -> statusLine).
 set -uo pipefail
 
+# Four colours, lowest band first. The default is daltonised: blue → cyan →
+# yellow → magenta, deliberately with no red/green axis. A machine that reads
+# colour differently names its own four in statusline.conf, and both ramps
+# draw from them — one palette, two sets of thresholds.
+#
+# Resolved before the session is read, because none of it depends on one —
+# which is what lets --explain answer without being fed anything.
+RAMP=(34 36 33 35)
+
+colour_code() {
+  case "$1" in
+    black) printf 30 ;; red)     printf 31 ;; green) printf 32 ;; yellow) printf 33 ;;
+    blue)  printf 34 ;; magenta) printf 35 ;; cyan)  printf 36 ;; white)  printf 37 ;;
+    *) return 1 ;;
+  esac
+}
+
+SEGMENTS='5h 7d ctx turns model where'
+conf="$HOME/.claude/statusline.conf"
+directive() { sed 's/#.*//' "$conf" | awk -v k="$1" '$1 == k { $1 = ""; sub(/^ +/, ""); print; exit }'; }
+IGNORED=''
+
+if [ -r "$conf" ]; then
+  configured=$(directive segments)
+  [ -n "$configured" ] && SEGMENTS="$configured"
+
+  # Four names or none: a ramp that cannot be read in full leaves the default
+  # standing, so a typo shows up as nothing changing rather than as one band
+  # quietly painted the wrong colour. What was ignored is remembered, because
+  # falling back in silence is exactly what --explain exists to break.
+  configured=$(directive ramp)
+  if [ -n "$configured" ]; then
+    read -r -a names <<<"$configured"
+    codes=()
+    for n in "${names[@]}"; do c=$(colour_code "$n") && codes+=("$c"); done
+    if [ "${#names[@]}" -eq 4 ] && [ "${#codes[@]}" -eq 4 ]; then
+      RAMP=("${codes[@]}")
+    else
+      IGNORED='ramp'
+    fi
+  fi
+fi
+
+# What this machine's statusline will do, for anything that would otherwise
+# have to parse statusline.conf a second time and drift from this.
+if [ "${1:-}" = --explain ]; then
+  printf 'config %s\n'   "$conf"
+  printf 'segments %s\n' "$SEGMENTS"
+  printf 'ramp %s\n'     "${RAMP[*]}"
+  [ -n "$IGNORED" ] && printf 'ignored %s\n' "$IGNORED"
+  exit 0
+fi
+
 input=$(cat)
 
 IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir branch pr transcript <<<"$(
@@ -26,16 +79,17 @@ IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir 
 [ -z "${model:-}" ] && exit 0
 
 DIM=$'\033[2m'; RESET=$'\033[0m'
-CYAN=$'\033[36m'; YELLOW=$'\033[33m'; MAGENTA=$'\033[35m'; BLUE=$'\033[34m'
 
-# Daltonized-safe ramp: blue -> cyan -> yellow -> magenta. No red/green axis.
-hue() {
-  local p=${1%%.*}
-  if   [ "$p" -ge 90 ] 2>/dev/null; then printf '%s' "$MAGENTA"
-  elif [ "$p" -ge 70 ] 2>/dev/null; then printf '%s' "$YELLOW"
-  elif [ "$p" -ge 40 ] 2>/dev/null; then printf '%s' "$CYAN"
-  else printf '%s' "$BLUE"; fi
+# Which of the four bands a value falls in. A value that is not a number sinks
+# to the lowest band rather than colouring the line by accident.
+band() { # value low mid high
+  if   [ "$1" -ge "$4" ] 2>/dev/null; then printf 3
+  elif [ "$1" -ge "$3" ] 2>/dev/null; then printf 2
+  elif [ "$1" -ge "$2" ] 2>/dev/null; then printf 1
+  else printf 0; fi
 }
+
+hue() { printf '\033[%sm' "${RAMP[$(band "${1%%.*}" 40 70 90)]}"; }
 
 # 5-cell bar so the number has a shape next to it.
 bar() {
@@ -73,12 +127,8 @@ fmt_dur() {
   else printf '%ds' "$s"; fi
 }
 
-dur_hue() { # same daltonized ramp, thresholds at 1m / 3m / 10m
-  if   [ "$1" -ge 600 ]; then printf '%s' "$MAGENTA"
-  elif [ "$1" -ge 180 ]; then printf '%s' "$YELLOW"
-  elif [ "$1" -ge  60 ]; then printf '%s' "$CYAN"
-  else printf '%s' "$BLUE"; fi
-}
+# The same four colours, banded by 1m / 3m / 10m instead.
+dur_hue() { printf '\033[%sm' "${RAMP[$(band "$1" 60 180 600)]}"; }
 
 # Per-turn wall clock off the transcript: prompt -> last assistant message of the
 # same turn, so it stops growing once the turn ends and never counts idle time.
@@ -113,31 +163,43 @@ turn_times() {
   printf '%s' "$turns"
 }
 
+# Which segments the line carries is a per-machine preference, so it comes
+# from an untracked ~/.claude/statusline.conf rather than the tracked checkout,
+# and the order they are named in is the order they are drawn. No file, or a
+# directive naming nothing, keeps the line as it has always been — a blank
+# statusline is indistinguishable from a broken one.
+
 seg=()
-w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w")
-w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w")
-
-if [ "$ctx" != "-" ]; then
-  p=${ctx%%.*}
-  seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
-fi
-
-read -r t_last t_mean <<<"$(turn_times "$transcript")"
-if [ -n "${t_last:-}" ]; then
-  seg+=("$(printf '%s⏱%s %s%s%s %s⌀ %s%s' \
-    "$DIM" "$RESET" "$(dur_hue "$t_last")" "$(fmt_dur "$t_last")" "$RESET" \
-    "$DIM" "$(fmt_dur "$t_mean")" "$RESET")")
-fi
-
-tail_bits="$model"
-[ "$effort" != "-" ] && tail_bits+="·$effort"
-[ "$thinking" != "-" ] && tail_bits+="·think"
-seg+=("$(printf '%s%s%s' "$DIM" "$tail_bits" "$RESET")")
-
-loc="$dir"
-[ "$pr" != "-" ] && loc+=" #$pr"
-seg+=("$(printf '%s%s%s' "$DIM" "$loc" "$RESET")")
-
+for name in $SEGMENTS; do
+  case "$name" in
+    5h) w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w") ;;
+    7d) w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w") ;;
+    ctx)
+      if [ "$ctx" != "-" ]; then
+        p=${ctx%%.*}
+        seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
+      fi ;;
+    turns)
+      read -r t_last t_mean <<<"$(turn_times "$transcript")"
+      if [ -n "${t_last:-}" ]; then
+        seg+=("$(printf '%s⏱%s %s%s%s %s⌀ %s%s' \
+          "$DIM" "$RESET" "$(dur_hue "$t_last")" "$(fmt_dur "$t_last")" "$RESET" \
+          "$DIM" "$(fmt_dur "$t_mean")" "$RESET")")
+      fi ;;
+    model)
+      tail_bits="$model"
+      [ "$effort" != "-" ] && tail_bits+="·$effort"
+      [ "$thinking" != "-" ] && tail_bits+="·think"
+      seg+=("$(printf '%s%s%s' "$DIM" "$tail_bits" "$RESET")") ;;
+    where)
+      loc="$dir"
+      [ "$pr" != "-" ] && loc+=" #$pr"
+      seg+=("$(printf '%s%s%s' "$DIM" "$loc" "$RESET")") ;;
+    # A name nothing answers to is drawn, not dropped: a silently missing
+    # segment looks exactly like one whose data was absent this turn.
+    *) seg+=("$(printf '%s?%s%s' "$DIM" "$name" "$RESET")") ;;
+  esac
+done
 out=""
 for s in "${seg[@]}"; do
   [ -n "$out" ] && out+="$DIM │ $RESET"

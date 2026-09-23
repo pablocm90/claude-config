@@ -51,7 +51,7 @@ save_hint() {
 # nothing a reviewer acts on and pushes the first hunk off the opening screen,
 # so only the path survives, as a heading. Reads a diff on stdin.
 note_scaffold() {
-  printf '# Write your comments under the file they are about, below its hunks.\n'
+  printf '# Write your comments anywhere under the file they are about.\n'
   printf '# %s to send them to Claude. An untouched file sends nothing.\n' "$(save_hint)"
   awk '
     /^diff --git / {
@@ -66,40 +66,37 @@ note_scaffold() {
   '
 }
 
-# Extract the reviewer's own lines.
+# Extract the reviewer's own lines, by comparing the file they saved with the
+# scaffold they were handed.
 #
-# A hunk header declares how many lines its body holds, so the body's end is
-# known exactly rather than guessed from leading characters. That is the whole
-# point: it lets a comment begin with any character at all, including the '-'
-# of a bullet list, which a prefix rule would have swallowed as a deletion.
-# A heading with nothing written under it is dropped — it would send Claude
-# hunting for feedback that isn't there.
+# Nothing about a line decides whether it is theirs — only whether it was in
+# the scaffold. That is what lets a comment look like anything at all: the '-'
+# of a bullet list, a '#' of its own, and above all a sentence typed inside a
+# hunk, directly under the line it is about. Reading the hunk headers instead
+# ended the hunk early on exactly that comment and handed back the diff lines
+# it had displaced. A heading with nothing written under it is dropped — it
+# would send Claude hunting for feedback that isn't there.
 note_comments() {
-  awk '
-    function count(field,   n) {
-      sub(/^[-+]/, "", field)
-      n = index(field, ",")
-      return n ? substr(field, n + 1) + 0 : 1
-    }
-    /^## / { heading = $0; shown = 0; preamble = 0; next }
-    preamble && /^#/ { next }
-    /^\\ / { next }
-    /^@@ / { old = count($2); new = count($3); next }
-    old > 0 || new > 0 {
-      if (substr($0, 1, 1) == "-")      old--
-      else if (substr($0, 1, 1) == "+") new--
-      else                              { old--; new-- }
-      next
-    }
+  local saved="$1" scaffold="$2" theirs
+  theirs=$(diff --unchanged-line-format= --old-line-format= \
+                --new-line-format='%dn ' "$scaffold" "$saved") || true
+  awk -v theirs="$theirs" '
+    BEGIN { n = split(theirs, line, " "); for (i = 1; i <= n; i++) wrote[line[i]] = 1 }
+    /^## / { heading = $0; shown = 0 }
+    !(FNR in wrote) { next }
     /^[[:space:]]*$/ { next }
     {
       if (!shown && heading != "") { print heading; shown = 1 }
       print
     }
-  ' preamble=1 "$1"
+  ' "$saved"
 }
 
 # Hand the scaffold to the reviewer's editor and return only what they wrote.
+# The pristine copy is taken here rather than asked of the caller: the scaffold
+# is edited in place, so by the time anyone could compare, the only untouched
+# copy is one made before the editor ran.
+#
 # Inside the popup this runs downstream of the pager, so stdin is not the
 # terminal; an editor given that opens on a closed input and exits at once.
 # /dev/tty is the way back to the keyboard — except under a test or a pipeline
@@ -107,13 +104,17 @@ note_comments() {
 # A non-zero exit is the reviewer cancelling (vim's :cq) or a broken editor;
 # either way it must not read as "they had nothing to say".
 capture_note() {
-  local scaffold="$1"
+  local scaffold="$1" pristine rc=0
   local -a ed
+  pristine=$(mktemp)
+  cp "$scaffold" "$pristine"
   read -r -a ed <<< "$(review_editor)"
   if { : >/dev/tty; } 2>/dev/null; then
-    "${ed[@]}" "$scaffold" </dev/tty >/dev/tty 2>&1 || return 1
+    "${ed[@]}" "$scaffold" </dev/tty >/dev/tty 2>&1 || rc=1
   else
-    "${ed[@]}" "$scaffold" || return 1
+    "${ed[@]}" "$scaffold" || rc=1
   fi
-  note_comments "$scaffold"
+  [ "$rc" -eq 0 ] && note_comments "$scaffold" "$pristine"
+  rm -f "$pristine"
+  return "$rc"
 }

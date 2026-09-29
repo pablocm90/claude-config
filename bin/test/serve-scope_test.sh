@@ -39,20 +39,31 @@ case "$*" in
   "list-panes -s -t beta -F #{pane_pid}"*) printf '4242 task1\n' ;;
   "list-panes -a -F #{pane_pid}"*) printf '4242 task1\n' ;;
   "show-environment -t beta CLAUDE_DEV_ROOT") printf 'CLAUDE_DEV_ROOT=%s\n' "$WS" ;;
+  # session options persist between calls, as they do on a real server
+  "set -q -t beta @"*) printf '%s' "${6:-}" > "$FAKE_TMUX_OPTS/$5" ;;
+  "show -qv -t beta @"*) cat "$FAKE_TMUX_OPTS/$5" 2>/dev/null ;;
 esac
 exit 0
 FAKE
 cat > "$bin/fuser" <<'FAKE'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_FUSER_LOG"
 [ -n "${FAKE_FUSER:-}" ] || exit 1
 printf ' %s\n' "$FAKE_FUSER"
 FAKE
-chmod +x "$bin/tmux" "$bin/fuser"
+cat > "$bin/ss" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in *"sport = :3000") ;; *) exit 0 ;; esac
+printf 'LISTEN 0 1024 127.0.0.1:3000 0.0.0.0:* uid:1000 ino:%s sk:1 <->\n' "$FAKE_LISTENER_INO"
+FAKE
+chmod +x "$bin/tmux" "$bin/fuser" "$bin/ss"
 
 tmp=$(mktemp -d); export WS="$tmp/beta"
 mkdir -p "$WS/web/.claude/worktrees/task1" "$WS/api/.claude/worktrees"
 touch "$WS/web/.claude/worktrees/task1/package.json"
 LOG="$tmp/tmux.log"
+export FAKE_FUSER_LOG="$tmp/fuser.log" FAKE_TMUX_OPTS="$tmp/opts"
+mkdir -p "$FAKE_TMUX_OPTS"
 
 # --- serving one workspace leaves the others alone --------------------------
 : > "$LOG"
@@ -74,15 +85,40 @@ case "$err" in
      fails=$((fails + 1)) ;;
 esac
 
+# Task1's pane holds the port, behind a listening socket with the given inode.
+serving_with_listener() {
+  local ino="$1"; shift
+  (
+    export PATH="$bin:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$LOG" FAKE_FUSER=4242 FAKE_LISTENER_INO="$ino"
+    unset TMUX_PANE CLAUDE_DEV_ROOT
+    bash "$CD" serving --session beta "$@" 2>/dev/null
+  )
+}
+
 # --- the status line publishes per workspace --------------------------------
 : > "$LOG"
-(
-  export PATH="$bin:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$LOG" FAKE_FUSER=4242
-  unset TMUX_PANE CLAUDE_DEV_ROOT
-  bash "$CD" serving --refresh --session beta >/dev/null 2>&1
-)
+serving_with_listener 101 --refresh
 assert_logged     "@serving is published on the session that asked" "-t beta @serving task1"
 assert_not_logged "@serving is not a server-wide option"            "set -gq @serving"
+
+# --- the status line scans for the port's owner only when the listener changes
+scans() { wc -l < "$FAKE_FUSER_LOG" | tr -d ' '; }
+assert_scans() {
+  [ "$(scans)" -eq "$2" ] || { echo "FAIL: $1 — $(scans) scans, expected $2"; fails=$((fails + 1)); }
+}
+
+: > "$FAKE_FUSER_LOG"; rm -f "$FAKE_TMUX_OPTS"/*
+serving_with_listener 101 --refresh
+serving_with_listener 101 --refresh
+assert_scans "an unchanged listener is not scanned again" 1
+[ "$(cat "$FAKE_TMUX_OPTS/@serving" 2>/dev/null)" = task1 ] ||
+  { echo "FAIL: an unchanged listener keeps its window lit"; fails=$((fails + 1)); }
+serving_with_listener 202 --refresh
+assert_scans "a restarted server is scanned again" 2
+
+asked=$(serving_with_listener 202)
+[ "$asked" = task1 ] ||
+  { echo "FAIL: asking which window serves answers past the status line's cache — got: ${asked:-<nothing>}"; fails=$((fails + 1)); }
 
 rm -rf "$bin" "$tmp"
 [ "$fails" -eq 0 ] && echo "serve-scope: all assertions passed"

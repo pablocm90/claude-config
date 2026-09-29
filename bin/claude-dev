@@ -578,7 +578,8 @@ cmd_serve() {
 # Every attached session's status line runs this, so the session is named
 # rather than inferred, and @serving is set on that session: a workspace must
 # not publish another one's window into its neighbours' status bars.
-# Runs from #() on every status redraw, so it stays to a few cheap calls.
+# Runs from #() on every status redraw, and fuser walks every process's open
+# files: --refresh only looks for the owner when the port's listener changes.
 cmd_serving() {
   local refresh=0 session=""
   while [ $# -gt 0 ]; do
@@ -595,6 +596,9 @@ cmd_serving() {
   [ -n "$session" ] || session=$(session_for "$root")
   local pid win="" panes i
   local main_port; main_port=$(serve_ports "$root" | awk '{print $1}')
+  local listener; listener=$(ss -ltnHe "sport = :$main_port" 2>/dev/null | grep -o 'ino:[0-9]*')
+  [ "$refresh" -eq 1 ] &&
+    [ "$listener" = "$(tmux show -qv -t "$session" @serving_listener 2>/dev/null)" ] && return 0
   pid=$(fuser "$main_port/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -m1 -E '^[0-9]+$') || pid=""
   if [ -n "$pid" ]; then
     panes=$(tmux list-panes -s -t "$session" -F '#{pane_pid} #{window_name}' 2>/dev/null) || panes=""
@@ -609,6 +613,7 @@ cmd_serving() {
   # through ordinary format conditionals rather than this command's output.
   if [ "$refresh" -eq 1 ]; then
     tmux set -q -t "$session" @serving "$win" 2>/dev/null || true
+    tmux set -q -t "$session" @serving_listener "$listener" 2>/dev/null || true
     return 0
   fi
   [ -n "$win" ] && printf '%s\n' "$win"

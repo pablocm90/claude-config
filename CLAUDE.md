@@ -143,6 +143,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | Skill | Use when |
 |---|---|
 | `api-design` | REST endpoints, module boundaries, prop interfaces, any public contract. |
+| `architecture-survey` | Survey the code that changes most for shallow modules and report deepening candidates; explore the one the human picks. Vocabulary: `refactoring`'s `resources/deep-modules.md`. |
 | `typescript-strict` | Defining types/schemas, reviewing type safety, strict-mode flags. |
 | `functional` | Logic / data transforms / mutation bugs. Don't over-apply heavy FP. |
 | `oop` | Ruby/Rails OOP — SOLID, encapsulation, ActiveRecord, service/value objects, DI. Ruby codebases only; don't apply to functional TS. |

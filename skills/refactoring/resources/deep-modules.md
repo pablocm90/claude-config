@@ -6,7 +6,7 @@ Vocabulary for the *shape* of a module, adapted from Matt Pocock's `codebase-des
 
 - **Module**: anything with an interface and an implementation, at any scale: a function, a class, a package, a slice across tiers.
 - **Interface**: everything a caller must know to use the module correctly: the signature, but also invariants, ordering constraints, error modes, required configuration and performance. Wider than the type signature.
-- **Depth**: behaviour per unit of interface. A **deep** module hides a lot behind a small interface. A **shallow** module's interface is nearly as complex as its implementation.
+- **Depth**: leverage at the interface: how much behaviour a caller or a test reaches per thing it must learn. A **deep** module hides a lot behind a small interface. A **shallow** module's interface is nearly as complex as its implementation. This is not Ousterhout's ratio of implementation lines to interface lines, which padding the implementation would improve.
 - **Seam**: a place where behaviour can be altered without editing there; the place a module's interface lives (Feathers, as in `finding-seams`).
 - **Adapter**: a concrete thing that satisfies an interface at a seam.
 - **Leverage**: what callers get from depth: more capability per thing learned.
@@ -27,8 +27,8 @@ Vocabulary for the *shape* of a module, adapted from Matt Pocock's `codebase-des
 | Your own service across a network | Through a port at the seam: a network adapter in production, an in-memory one in tests |
 | A third party | Through an injected port, with a fake adapter in tests |
 
-Once tests at the deepened interface kill the same mutants, the old unit tests on the shallow parts are redundant: delete them rather than keep both layers.
+A deepening is new interface work, not a REFACTOR-phase move: it is built through `tdd`, starting RED at the new interface, so the REFACTOR checklist's "tests pass unmodified, no new public APIs" does not govern it. Once tests at the deepened interface kill the same mutants, the old unit tests on the shallow parts are redundant: delete them rather than keep both layers.
 
 ## Design it twice
 
-When the interface of a chosen candidate is open, have three subagents each design it under a different constraint: the fewest entry points; the most flexibility; the easiest common case (add ports and adapters when dependencies cross a network). Give each the files, the dependency kinds, and the glossary's words. Compare the designs on depth, locality and seam placement, then recommend one, or a hybrid, with a reason.
+When the interface of a chosen candidate is open, first tell the user the constraints any interface must meet, then have three subagents each design it under a different constraint: the fewest entry points; the most flexibility; the easiest common case. Add a fourth, designed around ports and adapters, when dependencies cross a network. Give each the files, the dependency kinds, and the glossary's words. Compare the designs on depth, locality and seam placement, then recommend one, or a hybrid, with a reason.

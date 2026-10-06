@@ -96,7 +96,7 @@ Before planning, exploring, or writing a single line of code or test, classify t
 | Greenfield project, service, subsystem, or unproven integration | `walking-skeleton`, then `planning`, `tdd`, `testing`, `mutation-testing` |
 | Significant / multi-step work | all of the above + `planning` |
 | Bug, regression, flaky test, CI failure, slowdown | `diagnosing-bugs`, then `tdd` for the fix |
-| Writing a skill, agent, CLAUDE.md or memory file | `writing-for-agents` |
+| Writing a skill, agent or CLAUDE.md | `writing-for-agents` |
 | Modifying untested legacy code | `characterisation-tests`, `finding-seams`, then `tdd`, `testing` |
 | API endpoint design/changes | `api-design`, then `tdd`, `testing`, `mutation-testing` |
 

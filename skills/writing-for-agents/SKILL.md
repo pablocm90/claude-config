@@ -47,7 +47,7 @@ Inline what every branch needs; disclose what only some branches reach. Referenc
 
 Every step ends on a condition that tells the agent it is done.
 
-- **Clear**: a vague bound ("understanding reached") invites stopping early, pulled by the steps still ahead. Sharpen the bound first.
+- **Clear**: a vague bound ("understanding reached") invites stopping early, pulled by the steps still ahead. Sharpen the bound first. Only when it stays fuzzy and you see the rush, hide the later steps by splitting the sequence across a real context boundary (a handoff, a subagent); an inline call leaves them in view.
 - **Demanding**: "every modified model accounted for" drives legwork that "produce a change list" does not.
 
 The strongest criteria are checkable and exhaustive.
@@ -58,7 +58,7 @@ A **leading word** is a compact concept the model already knows (*tight*, *red*,
 
 ## State the target, not the ban
 
-A prohibition puts the banned behaviour into context and makes it more available. Write the behaviour you want ("write one-line comments"). Keep a prohibition only as a hard guardrail with no positive phrasing, and pair it with the target. A rule with a fixed shape (a command, a pattern, a path) belongs in a hook, where it cannot be ignored, not in prose.
+A prohibition puts the banned behaviour into context and makes it more available. Write the behaviour you want ("return a new copy" rather than "don't mutate"). Keep a prohibition only as a hard guardrail with no positive phrasing, and pair it with the target. A rule with a fixed shape (a command, a pattern, a path) belongs in a hook, where it cannot be ignored, not in prose.
 
 ## Pruning
 
@@ -69,4 +69,4 @@ A prohibition puts the banned behaviour into context and makes it more available
 
 ## Done when
 
-Every pointer you touched names its branches behind a front-loaded trigger, every step ends on a criterion, and a read-through finds no no-op, duplicate, cache, or ban that should be a positive target or a hook.
+Every pointer you touched names its branches behind a front-loaded trigger, every step you wrote ends on a criterion, and a read-through of the lines you changed finds no no-op, duplicate, cache, or ban that should be a positive target or a hook. A wider sweep of the file is a separate change the human picks.

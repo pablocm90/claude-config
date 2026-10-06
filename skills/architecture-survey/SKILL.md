@@ -14,9 +14,9 @@ A survey finds **deepening candidates**: clusters of shallow modules that would 
 
 ## 1. Scope
 
-Take the area the user named. Otherwise find the **hot spots**: the files changed most over the last few months (`git log --since="3 months ago" --name-only --format=`, counted), crossed with the project's complexity tool when it has one. Deepening pays back on code that keeps changing, so stable code stays out. Then read the project glossary, whose words name good seams, and the ADRs covering the area, which record decisions not to re-litigate.
+Take the area the user named. Otherwise find the **hot spots**: the files changed most over the last few months (`git log --since="3 months ago" --name-only --format=`, counted), crossed with the project's complexity tool when it has one. Deepening pays back on code that keeps changing, so stable code stays out; when nothing stands out, widen the window. Then read the project glossary, whose words name good seams, and the ADRs covering the area (`docs/adr/` unless the project keeps them elsewhere), which record decisions not to re-litigate.
 
-Done when you can name the area and show why it is hot, in churn numbers.
+Done when the area is fixed: the one the user named, or a hot spot you can show in churn numbers.
 
 ## 2. Explore
 
@@ -42,7 +42,7 @@ Write `plans/<yyyy-mm-dd>-architecture-survey-<area>.md`. For each candidate:
 - **Before / after**: a Mermaid diagram of the two shapes.
 - **Strength**: Strong, Worth exploring, or Speculative.
 
-A candidate that contradicts an ADR appears only when its friction justifies reopening that decision, and says so. End with the candidate you would take first, and why. Then ask which one to explore.
+A candidate that contradicts an ADR appears only when its friction justifies reopening that decision, and says so. End with the candidate you recommend, and why. The candidates are alternative destinations, not a sequence of strides: ask which one to explore, and the one picked is planned and built in strides like any other work.
 
 ## 4. Explore the chosen candidate
 

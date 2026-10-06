@@ -80,7 +80,7 @@ For detailed patterns and examples, load the `functional` skill.
 - CLEANUP: Run the `cleanup` skill over the change — strip redundant transformations, back-compat shims, needless defensive code and dedup; loop until reinspection is empty
 - **Wait for commit approval** before every commit (exception: when `mmmss-stride` is loaded, the stride boundary is the approval point — commit each green stride, then stop for review)
 - Each increment leaves codebase in working state
-**Canonical flow for non-trivial work:** `story-splitting` → `planning` → `tdd` (→ `mutation-testing` → `refactoring` → `cleanup`). Add `find-gaps` whenever a plan or AC set feels thin. Insert `walking-skeleton` before `planning` when the first slice's job is to prove a path exists (greenfield, unproven integration, no deploy pipeline).
+**Canonical flow for non-trivial work:** `grilling` (while it is still an idea) → `story-splitting` → `planning` → `tdd` (→ `mutation-testing` → `refactoring` → `cleanup`). Add `find-gaps` whenever a plan or AC set feels thin. Insert `walking-skeleton` before `planning` when the first slice's job is to prove a path exists (greenfield, unproven integration, no deploy pipeline).
 
 ### Mandatory first step — skill loading
 
@@ -116,6 +116,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 
 | Skill | Use when |
 |---|---|
+| `grilling` | An idea, plan or decision not yet settled: interview the human one question at a time, with a recommended answer each, until no decision is left open. Runs **before** `story-splitting`.
 | `story-splitting` | A large story / epic / feature / backlog item must be sliced into small end-to-end deliverables. Run **before** `planning`. |
 | `walking-skeleton` | The first slice must prove an architecture, integration, or deployment path rather than a feature — greenfield project/service, an unproven boundary, no pipeline yet, or a steel thread through legacy. Also: tracer bullet, steel thread. |
 | `planning` | Sequencing PR-sized slices with TDD execution details. Plans live in `plans/`. |

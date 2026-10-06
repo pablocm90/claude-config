@@ -107,6 +107,7 @@ Before planning, exploring, or writing a single line of code or test, classify t
 | Structural / architectural changes | all of the above + `connascence`, `code-smells`, plus `oop` (Ruby) or `functional` + `typescript-strict` (TS) |
 | Greenfield project, service, subsystem, or unproven integration | `walking-skeleton`, then `planning`, `tdd`, `testing`, `mutation-testing` |
 | Significant / multi-step work | all of the above + `planning` |
+| Bug, regression, flaky test, slowdown | `diagnosing-bugs`, then `tdd` for the fix |
 | CI failure | `ci-debugging` |
 | Modifying untested legacy code | `characterisation-tests`, `finding-seams`, then `tdd`, `testing` |
 | API endpoint design/changes | `api-design`, then `tdd`, `testing`, `mutation-testing` |
@@ -143,6 +144,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `connascence` | Coupling taxonomy — decide **which direction** to refactor and **when to stop**. (the *axis*) |
 | `finding-seams` | Make untestable legacy code testable without editing call sites. |
 | `characterisation-tests` | Pin current behaviour of legacy code before changing it. |
+| `diagnosing-bugs` | Something is broken, flaky or slow: build a loop that goes red on it before any theory, then minimise, hypothesise, fix with a regression test. |
 | `ci-debugging` | Systematically diagnose CI / build / pipeline failures. |
 | `handoff` | After a deploy/merge or when a session grows long: flush durables to memory/plan/PR, write the task handoff file, user restarts via `claude-dev cycle`. |
 

@@ -117,6 +117,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | Skill | Use when |
 |---|---|
 | `grilling` | An idea, plan or decision not yet settled: interview the human one question at a time, with a recommended answer each, until no decision is left open. Runs **before** `story-splitting`.
+| `domain-modeling` | A domain term is new, contested or used two ways: settle it with the human and write it to the project glossary; record hard-to-reverse choices as ADRs. |
 | `story-splitting` | A large story / epic / feature / backlog item must be sliced into small end-to-end deliverables. Run **before** `planning`. |
 | `walking-skeleton` | The first slice must prove an architecture, integration, or deployment path rather than a feature — greenfield project/service, an unproven boundary, no pipeline yet, or a steel thread through legacy. Also: tracer bullet, steel thread. |
 | `planning` | Sequencing PR-sized slices with TDD execution details. Plans live in `plans/`. |

@@ -52,6 +52,10 @@ The `adr` agent creates Architecture Decision Records (ADRs) for significant arc
    - Encryption strategy
    - Security headers policy
 
+6. **Deliberate Deviations from the Obvious Path**
+   - Anything where a reasonable reader would assume the opposite ("raw SQL here, not the ORM, because…")
+   - These stop the next engineer from "fixing" something that was deliberate
+
 ### ❌ DO NOT Create an ADR For:
 
 1. **Trivial Implementation Choices**
@@ -103,7 +107,7 @@ Ask these questions:
    - YES → No new ADR needed
    - NO → Consider ADR
 
-**If 3+ questions answered "YES/Consider" → Create ADR**
+**Create an ADR only when 1, 2 and 4 are all YES and 5 is NO**: hard to reverse, a real trade-off, and surprising without context. Missing any one of them, skip it: an easy reversal gets reversed, an obvious choice needs no record, and a choice without alternatives has nothing to record beyond "we did the obvious thing". Question 3 raises priority; it does not qualify a decision on its own.
 
 ## When to Invoke
 

@@ -1,6 +1,6 @@
 ---
 name: find-gaps
-description: Adversarially review plans, acceptance criteria, and design mocks to surface missing states, unhandled edge cases, unstated assumptions, and unverifiable criteria — then work interactively with the user, one question at a time, to turn each gap into a new acceptance criterion, plan update, or mock-state spec. Use when reviewing a spec/plan/mocks before coding, when the user says "what's missing?" / "find gaps" / "poke holes" / "help me tighten this", or when a hand-off artifact needs to reach a testable state.
+description: "Find gaps: adversarially review a plan, acceptance criteria or a design mock for missing states, unhandled edge cases, unstated assumptions and unverifiable criteria, then close each gap with the user one question at a time. Use before coding from a plan or mock, or when asked what is missing or to poke holes in one."
 ---
 
 # Find Gaps

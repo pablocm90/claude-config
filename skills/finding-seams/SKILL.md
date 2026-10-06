@@ -1,6 +1,6 @@
 ---
 name: finding-seams
-description: Use when existing code has untestable dependencies that prevent writing tests -- direct construction of collaborators, static or global function calls, tight coupling to external systems, or singleton access patterns. Specifically for identifying substitution points (seams) that make legacy or tightly-coupled code testable without editing at the call site. Covers TypeScript/FP-first patterns plus Ruby/Rails (resources/rails.md). Do NOT use for greenfield TDD (see tdd), general test writing patterns (see testing), or refactoring already-tested code (see refactoring).
+description: "Finding seams: make coupled or legacy code testable without editing its call sites, by finding where a dependency can be substituted. Use when a test cannot be written because the code builds its own collaborators, calls globals or singletons, or talks to an external system directly."
 ---
 
 # Finding Seams

@@ -1,6 +1,6 @@
 ---
 name: characterisation-tests
-description: Use when modifying existing code that lacks tests and you need to document its actual current behavior before making changes -- the legacy code dilemma where you need tests to refactor safely but the code was not written for testability. Specifically for understanding and pinning down what code currently does, not what it should do. Do NOT use for test-driving new behavior (see tdd), general test writing patterns (see testing), verifying test effectiveness (see mutation-testing), or making untestable code testable (see finding-seams). Includes Ruby/Rails/Minitest guidance in resources/rails.md.
+description: "Characterisation tests: pin down what untested code does today, before changing it, so the change has a safety net. Use when you must modify existing code that has no tests. New behaviour goes through tdd; code too coupled to test goes through finding-seams first."
 ---
 
 # Characterisation Tests

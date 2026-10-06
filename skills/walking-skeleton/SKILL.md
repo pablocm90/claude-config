@@ -1,6 +1,6 @@
 ---
 name: walking-skeleton
-description: Build the first slice as a thin end-to-end system that really runs — walking skeleton, tracer bullet, or steel thread. Use when starting a greenfield project, service, or subsystem; when the first slice must prove an architecture, integration, or deployment path rather than a feature; when integration risk, "will these pieces even talk to each other", or "we have no pipeline yet" is the dominant unknown; when threading a new capability through an existing legacy system; or when asked for a tracer bullet, steel thread, spanning application, zero-feature release, or "hello world through the whole stack".
+description: "Walking skeleton (tracer bullet, steel thread): build the first slice as a thin end-to-end system that really runs. Use when starting a greenfield project, service or subsystem, when the first slice must prove an integration or deployment path rather than a feature, or when threading a new capability through a legacy system."
 ---
 
 # Walking Skeleton

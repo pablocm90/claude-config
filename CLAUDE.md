@@ -144,6 +144,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `finding-seams` | Make untestable legacy code testable without editing call sites. |
 | `characterisation-tests` | Pin current behaviour of legacy code before changing it. |
 | `diagnosing-bugs` | Something is broken, flaky or slow, locally or in CI: build a loop that goes red on it before any theory, then minimise, hypothesise, fix with a regression test. |
+| `retro` | After a session that went sideways, or on request: turn its redirects, failures and slow searches into environment changes (hooks, steering, skills). |
 | `handoff` | After a deploy/merge or when a session grows long: flush durables to memory/plan/PR, write the task handoff file, user restarts via `claude-dev cycle`. |
 
 ### Tier 2 — Architecture, language, contracts

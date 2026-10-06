@@ -1,17 +1,5 @@
 # Development Guidelines for Claude
 
-> **About this file (v3.1.0):** Lean version optimized for context efficiency. Core principles here; detailed patterns loaded on-demand via skills.
->
-> **Architecture:**
-> - **CLAUDE.md** (this file): Core philosophy + quick reference (~150 lines, always loaded)
-> - **Skills**: Detailed patterns loaded on-demand. See **Skill Map** below for the full tiered index.
-> - **Agents**: Specialized subprocesses for verification and analysis
->
-> **Previous versions:**
-> - v3.0.0: Lean modular with skill index (no Skill Map yet)
-> - v2.0.0: Modular with @docs/ imports (~3000+ lines always loaded)
-> - v1.0.0: Single monolithic file (1,818 lines)
-
 ## Core Philosophy
 
 **TEST-DRIVEN DEVELOPMENT IS NON-NEGOTIABLE.** Every single line of production code must be written in response to a failing test. No exceptions. This is not a suggestion or a preference - it is the fundamental practice that enables all other principles in this document.
@@ -194,14 +182,3 @@ For detailed guidance on expectations and documentation, load the `expectations`
 ## Browser Automation
 
 Use the Playwright MCP tools (playwright plugin) for web automation: navigate → snapshot → interact via element refs → re-snapshot after page changes. Fall back to `WebFetch`/`curl` for simple content fetches.
-
-## Resources and References
-
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
-- [Testing Library Principles](https://testing-library.com/docs/guiding-principles)
-- [Kent C. Dodds Testing JavaScript](https://testingjavascript.com/)
-- [Functional Programming in TypeScript](https://gcanti.github.io/fp-ts/)
-
-## Summary
-
-The key is to write clean, testable, functional code that evolves through small, safe increments. Every change should be driven by a test that describes the desired behavior, and the implementation should be the simplest thing that makes that test pass. When in doubt, favor simplicity and readability over cleverness.

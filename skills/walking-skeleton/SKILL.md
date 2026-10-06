@@ -31,7 +31,7 @@ Load `resources/source-notes.md` for source-by-source provenance.
 
 `story-splitting` answers *which* thin slice is worth building. This skill answers *what the first one owes you* and how to build it. Use `story-splitting` first when the input is an epic; come here when the chosen first slice's job is to prove the path exists.
 
-The skeleton's first end-to-end test **is** the RED step. Run `tdd` inside the skeleton, not after it. `testing` and `front-end-testing` cover how to write the end-to-end test; `api-design` keeps the boundary you thread through coherent; `ci-debugging` when the pipeline you just built goes red.
+The skeleton's first end-to-end test **is** the RED step. Run `tdd` inside the skeleton, not after it. `testing` and `front-end-testing` cover how to write the end-to-end test; `api-design` keeps the boundary you thread through coherent; `diagnosing-bugs` when the pipeline you just built goes red.
 
 For a skeleton through **untested legacy code**, load `finding-seams` and `characterisation-tests` first — you need a safe substitution point before threading anything new through it.
 

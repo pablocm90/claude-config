@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnose a bug, regression, flaky test or slowdown by first building a loop that goes red on it. Use when something is broken, throwing, failing, flaky or slow, or the user says "debug" or "diagnose".
+description: Diagnose a bug, regression, flaky test, CI failure or slowdown by first building a loop that goes red on it. Use when something is broken, throwing, failing, flaky or slow, locally or in CI, or the user says "debug" or "diagnose".
 metadata:
   credits:
     author: Matt Pocock
@@ -18,7 +18,7 @@ Redact everything you show (commands, output, captured payloads): `<REDACTED>` i
 
 ## Phase 1: Build a red loop
 
-Spend disproportionate effort here. Climb the ladder in order and take the first rung that reaches the bug:
+Spend disproportionate effort here. For a CI failure, read [resources/ci.md](resources/ci.md) first. Otherwise climb the ladder in order and take the first rung that reaches the bug:
 
 1. **Failing test** at the seam that reaches the bug (`bin/rails test path:LINE`, `yarn vitest run path`).
 2. **HTTP script** against the dev server: curl with the real request.

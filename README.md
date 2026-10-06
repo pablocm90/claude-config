@@ -273,7 +273,7 @@ generate a project `CLAUDE.md`, hooks and commands.
 | Path | |
 |---|---|
 | `CLAUDE.md` | philosophy, the mandatory skill-loading table, the skill map |
-| `skills/` | 29 skills in four tiers; stack deltas in `resources/rails.md`, `resources/typescript.md` |
+| `skills/` | 30 skills in four tiers; stack deltas in `resources/rails.md`, `resources/typescript.md` |
 | `agents/` | subagent definitions |
 | `commands/` | slash commands: `/setup`, `/plan`, `/cycle`, `/continue`, `/diff`, `/generate-pr-review` |
 | `bin/` | `install` (wire a machine), `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
@@ -285,7 +285,7 @@ generate a project `CLAUDE.md`, hooks and commands.
 
 Honest limits, so nothing surprises you on a new stack:
 
-- **Skills.** Of the 29, `typescript-strict`, `react-testing` and
+- **Skills.** Of the 30, `typescript-strict`, `react-testing` and
   `front-end-testing` are TypeScript/React by nature; `oop` and
   `rails-performance` are Ruby. `functional` and `code-smells` carry
   TypeScript examples but apply anywhere. The rest are language-neutral.

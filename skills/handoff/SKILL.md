@@ -24,6 +24,7 @@ Long sessions accumulate stale context; a task doesn't need the whole conversati
    **Branch / PRs**: <branch>, PR #<n> (<CI/review/merge state>)
    **Position**: <last completed stride; what is green / committed / pushed / deployed>
    **Next stride**: <ONE stride — the MMMSS rule applies to handoffs too>
+   **Skills**: <the set the next stride needs, and the work type that chose it>
    **Live context**: <in-flight decisions, tricky state, ephemeral gotchas not worth memory>
    ```
 
@@ -39,3 +40,4 @@ A session launched by `claude-dev cycle` is prompted to read the handoff. Read i
 - ONE next stride in the handoff — never a step list (the human picks strides one at a time).
 - Never cycle with a dirty working tree unless the handoff's Position section says exactly what is dirty and why.
 - The handoff is transient state (gitignored) — memory and plans are the archives.
+- It becomes the next session's prompt: write `<REDACTED>` in place of secrets, tokens and customer data.

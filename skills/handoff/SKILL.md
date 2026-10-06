@@ -33,7 +33,7 @@ Long sessions accumulate stale context; a task doesn't need the whole conversati
 
 ## Procedure (receiving side — the fresh session)
 
-A session launched by `claude-dev cycle` is prompted to read the handoff. Read it plus the plan it references, then open with the MMMSS ceremony sourced from the handoff: destination, done criterion, and the handoff's next stride as the proposed first step. One-line status, then wait for the human.
+A session launched by `claude-dev cycle` is prompted to read the handoff. Read it plus the plan it references, then open with the MMMSS ceremony sourced from the handoff: destination, done criterion, the handoff's next stride as the proposed first step, and its skills as the set to load. One-line status, then wait for the human.
 
 ## Rules
 

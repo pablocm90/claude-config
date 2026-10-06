@@ -31,7 +31,7 @@ Wall-clock targets do not work here. The agent cannot perceive elapsed time, so 
 
 The agent does not negotiate the budget mid-session.
 
-**Declare the size before starting.** The stride opener names what the slice will cost — "1 test + ~15 lines in `X`" — so the human can veto an over-sized slice before the work rather than after the diff.
+**Declare the size before starting.** The stride opener names what the slice will cost and where its test goes — "1 test on `X#call` + ~15 lines in `X`" — so the human can veto an over-sized slice before the work rather than after the diff.
 
 Three signals the slice is too big, in the order they appear:
 

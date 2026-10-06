@@ -119,7 +119,6 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `walking-skeleton` | The first slice must prove an architecture, integration, or deployment path rather than a feature — greenfield project/service, an unproven boundary, no pipeline yet, or a steel thread through legacy. Also: tracer bullet, steel thread. |
 | `planning` | Sequencing PR-sized slices with TDD execution details. Plans live in `plans/`. |
 | `find-gaps` | Adversarially review a plan, AC set, or mock to surface missing states / edge cases / unverifiable language **before** coding. |
-| `expectations` | Capture learnings, gotchas, ADRs after significant work. |
 | `mmmss-stride` | Human-in-the-loop cadence: small strides, each ends green + committed, stop for review. Load by default for interactive coding sessions; overrides "wait for commit approval" (stride boundary = approval) and other workflow skills' pacing. |
 | `tdd` | RED → GREEN → MUTATE → REFACTOR → CLEANUP. Non-negotiable for every code change. Governs work *inside* a stride when `mmmss-stride` is loaded. |
 | `testing` | Behaviour-driven tests, factories, test file structure. |
@@ -177,7 +176,6 @@ Skills in a project's `.claude/skills/` are discovered only when the session is 
 
 For detailed TDD workflow, load the `tdd` skill.
 For refactoring methodology, load the `refactoring` skill.
-For detailed guidance on expectations and documentation, load the `expectations` skill.
 
 ## Browser Automation
 

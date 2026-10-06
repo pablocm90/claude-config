@@ -50,7 +50,7 @@ The **first message** of every session must declare exactly five things, in this
 1. **Destination** — one sentence describing where we're going.
 2. **Done criterion** — the test or observable state that proves we got there.
 3. **First step** — the smallest plausible action toward the destination.
-4. **Size** — what the first step will cost, in tests and production lines.
+4. **Size** — what the first step will cost, in tests and production lines, and the **seam** the test goes through (the public interface it exercises), so the human confirms where the test lands as well as what it costs.
 5. **Skills** — the set you are about to load for this work, and what selected them. The human corrects it here, before it is in context.
 
 Do **not** enumerate subsequent steps. Do **not** propose a different stride size (the budget is fixed). Do **not** start coding until the human confirms or redirects.
@@ -60,7 +60,7 @@ Template:
 > **Destination:** _<one sentence>_
 > **Done when:** _<the test / observable state>_
 > **First step:** _<smallest plausible slice>_
-> **Size:** _<what it will cost: e.g. 1 test + ~15 lines in `X`>_
+> **Size:** _<what it will cost, and through which seam: e.g. 1 test on `Invoices::Settle#call` + ~15 lines in `X`>_
 > **Skills:** _<the set you are about to load, and the work type that chose them>_
 >
 > Proceeding on confirmation.

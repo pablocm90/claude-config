@@ -37,6 +37,12 @@ Multiple plans can coexist — each is independent and won't conflict across bra
 
 There will be exceptions — some changes are inherently coupled and splitting them would create broken intermediate states. Use judgement. But the default should always be to ask "can this be split?"
 
+**A wide refactor splits by expand–contract.** A rename or retype whose blast radius crosses the codebase cannot land green as one slice, yet it rarely needs one PR either:
+
+1. **Expand**: add the new form beside the old, so nothing breaks.
+2. **Migrate**: move callers over in batches sized by blast radius (a directory, a package, a feature), each a green PR of its own while the old form still exists.
+3. **Contract**: delete the old form once no caller is left.
+
 ## What Makes a "Known-Good Increment"
 
 Each step MUST:

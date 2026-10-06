@@ -1,17 +1,5 @@
 # Development Guidelines for Claude
 
-> **About this file (v3.1.0):** Lean version optimized for context efficiency. Core principles here; detailed patterns loaded on-demand via skills.
->
-> **Architecture:**
-> - **CLAUDE.md** (this file): Core philosophy + quick reference (~150 lines, always loaded)
-> - **Skills**: Detailed patterns loaded on-demand. See **Skill Map** below for the full tiered index.
-> - **Agents**: Specialized subprocesses for verification and analysis
->
-> **Previous versions:**
-> - v3.0.0: Lean modular with skill index (no Skill Map yet)
-> - v2.0.0: Modular with @docs/ imports (~3000+ lines always loaded)
-> - v1.0.0: Single monolithic file (1,818 lines)
-
 ## Core Philosophy
 
 **TEST-DRIVEN DEVELOPMENT IS NON-NEGOTIABLE.** Every single line of production code must be written in response to a failing test. No exceptions. This is not a suggestion or a preference - it is the fundamental practice that enables all other principles in this document.
@@ -107,7 +95,7 @@ Before planning, exploring, or writing a single line of code or test, classify t
 | Structural / architectural changes | all of the above + `connascence`, `code-smells`, plus `oop` (Ruby) or `functional` + `typescript-strict` (TS) |
 | Greenfield project, service, subsystem, or unproven integration | `walking-skeleton`, then `planning`, `tdd`, `testing`, `mutation-testing` |
 | Significant / multi-step work | all of the above + `planning` |
-| CI failure | `ci-debugging` |
+| Bug, regression, flaky test, CI failure, slowdown | `diagnosing-bugs`, then `tdd` for the fix |
 | Modifying untested legacy code | `characterisation-tests`, `finding-seams`, then `tdd`, `testing` |
 | API endpoint design/changes | `api-design`, then `tdd`, `testing`, `mutation-testing` |
 
@@ -131,7 +119,6 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `walking-skeleton` | The first slice must prove an architecture, integration, or deployment path rather than a feature — greenfield project/service, an unproven boundary, no pipeline yet, or a steel thread through legacy. Also: tracer bullet, steel thread. |
 | `planning` | Sequencing PR-sized slices with TDD execution details. Plans live in `plans/`. |
 | `find-gaps` | Adversarially review a plan, AC set, or mock to surface missing states / edge cases / unverifiable language **before** coding. |
-| `expectations` | Capture learnings, gotchas, ADRs after significant work. |
 | `mmmss-stride` | Human-in-the-loop cadence: small strides, each ends green + committed, stop for review. Load by default for interactive coding sessions; overrides "wait for commit approval" (stride boundary = approval) and other workflow skills' pacing. |
 | `tdd` | RED → GREEN → MUTATE → REFACTOR → CLEANUP. Non-negotiable for every code change. Governs work *inside* a stride when `mmmss-stride` is loaded. |
 | `testing` | Behaviour-driven tests, factories, test file structure. |
@@ -143,7 +130,8 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `connascence` | Coupling taxonomy — decide **which direction** to refactor and **when to stop**. (the *axis*) |
 | `finding-seams` | Make untestable legacy code testable without editing call sites. |
 | `characterisation-tests` | Pin current behaviour of legacy code before changing it. |
-| `ci-debugging` | Systematically diagnose CI / build / pipeline failures. |
+| `diagnosing-bugs` | Something is broken, flaky or slow, locally or in CI: build a loop that goes red on it before any theory, then minimise, hypothesise, fix with a regression test. |
+| `retro` | After a session that went sideways, or on request: turn its redirects, failures and slow searches into environment changes (hooks, steering, skills). |
 | `handoff` | After a deploy/merge or when a session grows long: flush durables to memory/plan/PR, write the task handoff file, user restarts via `claude-dev cycle`. |
 
 ### Tier 2 — Architecture, language, contracts
@@ -188,19 +176,7 @@ Skills in a project's `.claude/skills/` are discovered only when the session is 
 
 For detailed TDD workflow, load the `tdd` skill.
 For refactoring methodology, load the `refactoring` skill.
-For detailed guidance on expectations and documentation, load the `expectations` skill.
 
 ## Browser Automation
 
 Use the Playwright MCP tools (playwright plugin) for web automation: navigate → snapshot → interact via element refs → re-snapshot after page changes. Fall back to `WebFetch`/`curl` for simple content fetches.
-
-## Resources and References
-
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
-- [Testing Library Principles](https://testing-library.com/docs/guiding-principles)
-- [Kent C. Dodds Testing JavaScript](https://testingjavascript.com/)
-- [Functional Programming in TypeScript](https://gcanti.github.io/fp-ts/)
-
-## Summary
-
-The key is to write clean, testable, functional code that evolves through small, safe increments. Every change should be driven by a test that describes the desired behavior, and the implementation should be the simplest thing that makes that test pass. When in doubt, favor simplicity and readability over cleverness.

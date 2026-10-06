@@ -5,6 +5,9 @@
 #   claude-dev task <slug> [repo ...]    add a task window: claude | shell per worktree
 #                                        on a worktree <repo>/.claude/worktrees/<slug>
 #   claude-dev done <slug>               remove task worktree(s) + window (refuses if dirty)
+#   claude-dev reset [slug]              after its PR merges, restart the task's worktree(s)
+#                                        from the default branch (refuses if dirty
+#                                        or if any commit is on no remote)
 #   claude-dev prune [--yes]             remove clean worktrees whose PR is merged/closed
 #   claude-dev ready [slug] [--note <text>|--note -]
 #                                        signal a green stride: flag + auto-pop its
@@ -82,6 +85,10 @@ resolve_repo() {
   printf '%s' "$match"
 }
 
+default_base() {
+  git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/master
+}
+
 ensure_worktree() {
   local repo="$1" slug="$2" branch="$3" wt base
   wt="$repo/.claude/worktrees/$slug"
@@ -90,7 +97,7 @@ ensure_worktree() {
     return
   fi
   git -C "$repo" fetch -q origin
-  base=$(git -C "$repo" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/master)
+  base=$(default_base "$repo")
   mkdir -p "$repo/.claude/worktrees"
   if git -C "$repo" show-ref --verify -q "refs/heads/$branch"; then
     git -C "$repo" worktree add -q "$wt" "$branch"
@@ -254,6 +261,37 @@ cmd_done() {
   done
   [ "${#wts[@]}" -gt 0 ] || echo "no worktree named '$window' found (removing window only)"
   tmux kill-window -t "$session:$window" 2>/dev/null || true
+}
+
+cmd_reset() {
+  local slug="${1:-}"
+  [ -n "$slug" ] || slug=$(current_window || true)
+  [ -n "$slug" ] || die "usage: claude-dev reset <slug> (or run inside the task window)"
+  local root; root=$(resolve_root)
+  local r wt base wts=()
+  while IFS= read -r r; do
+    wt="$r/.claude/worktrees/$slug"
+    [ -d "$wt" ] || continue
+    if [ "$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null)" != "$(cd "$wt" && pwd -P)" ]; then
+      die "$wt is not a git worktree — remove the leftover folder (nothing reset)"
+    fi
+    if [ -n "$(git -C "$wt" status --porcelain)" ]; then
+      die "worktree $wt is dirty — commit or discard first (nothing reset)"
+    fi
+    if [ -n "$(git -C "$wt" rev-list -n 1 HEAD --not --remotes)" ]; then
+      die "worktree $wt has commits on no remote branch — push them first (nothing reset)"
+    fi
+    wts+=("$wt")
+  done < <(list_repos "$root")
+  [ "${#wts[@]}" -gt 0 ] || die "no worktree named '$slug' under $root"
+  for wt in "${wts[@]}"; do
+    r="${wt%/.claude/worktrees/*}"
+    git -C "$r" fetch -q origin
+    base=$(default_base "$r")
+    git -C "$wt" checkout -q -B "$slug" "$base"
+    git -C "$wt" branch -q --unset-upstream 2>/dev/null || true
+    echo "reset: $wt -> $base ($(git -C "$wt" rev-parse --short HEAD))"
+  done
 }
 
 cmd_prune() {
@@ -699,6 +737,7 @@ cmd_doctor() {
 case "${1:-}" in
   task)   shift; cmd_task "$@" ;;
   done)   shift; cmd_done "$@" ;;
+  reset)  shift; cmd_reset "$@" ;;
   prune)  shift; cmd_prune "$@" ;;
   cycle)  shift; cmd_cycle "$@" ;;
   ready)  shift; cmd_ready "$@" ;;

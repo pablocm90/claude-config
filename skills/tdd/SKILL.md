@@ -319,7 +319,7 @@ Before submitting PR:
 
 - `**Where**` — plan slice or ticket, and the companion PR in a sibling repo.
 - `**Why**` — the decision a reader can't infer from the diff: why this shape and not the obvious alternative.
-- `**Ship**` — deploy order, migration, flag, backfill: anything that must not be missed at merge time.
+- `**Ship**` — deploy order, migration, flag, backfill: anything that must not be missed at merge time. Name a **one-way door** as one: a destructive migration, a backfill, anything sent to customers. Reverting the merge does not undo those.
 - `**Look at**` — the hunk most worth attention, or the judgement call you're least sure of.
 - `**Not done**` — deferred work and open questions, so they aren't reported back as missing.
 - `**Green**` — suites run, the gate, any live verification. Name a surviving mutant only when it is a real gap.

@@ -23,6 +23,8 @@ The `adr` agent creates Architecture Decision Records (ADRs) for significant arc
 
 ### ✅ DO Create an ADR For:
 
+These are where qualifying decisions come from. A decision in one of them still has to pass the framework below.
+
 1. **Significant Architectural Choices**
    - System architecture patterns (microservices, monolith, event-driven)
    - Data storage decisions (SQL vs NoSQL, specific database choice)
@@ -51,6 +53,10 @@ The `adr` agent creates Architecture Decision Records (ADRs) for significant arc
    - Token storage approach
    - Encryption strategy
    - Security headers policy
+
+6. **Deliberate Deviations from the Obvious Path**
+   - Anything where a reasonable reader would assume the opposite ("raw SQL here, not the ORM, because…")
+   - These stop the next engineer from "fixing" something that was deliberate
 
 ### ❌ DO NOT Create an ADR For:
 
@@ -83,7 +89,7 @@ The `adr` agent creates Architecture Decision Records (ADRs) for significant arc
 
 Ask these questions:
 
-1. **Is this a one-way door?** (Hard/expensive to reverse)
+1. **Is this a one-way door?** (Hard/expensive to reverse, or likely to be undone by someone who does not know why it was chosen)
    - YES → Consider ADR
    - NO → Probably not needed
 
@@ -96,14 +102,14 @@ Ask these questions:
    - NO → Probably not needed
 
 4. **Will future developers wonder "why did they do it this way?"**
-   - YES → Definitely ADR
+   - YES → Consider ADR
    - NO → Probably not needed
 
 5. **Is this covered by existing guidelines/ADRs?**
    - YES → No new ADR needed
    - NO → Consider ADR
 
-**If 3+ questions answered "YES/Consider" → Create ADR**
+**Create an ADR only when 1, 2 and 4 are all YES and 5 is NO**: hard to reverse (or easy to undo by mistake), a real trade-off, and surprising without context. Missing any one of them, skip it: an easy reversal gets reversed, an obvious choice needs no record, and a choice without alternatives has nothing to record beyond "we did the obvious thing". Question 3 raises priority; it does not qualify a decision on its own.
 
 ## When to Invoke
 

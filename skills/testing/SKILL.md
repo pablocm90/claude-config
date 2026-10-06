@@ -445,6 +445,28 @@ describe('validate payment', () => {
 });
 ```
 
+### Pattern 5: Tautological expected value
+
+The expected value is computed the way the code computes it, so the test passes by construction and can never disagree with the code.
+
+❌ **WRONG** - Recomputes the answer:
+```typescript
+it('sums line items', () => {
+  const items = [{ price: 10 }, { price: 5 }];
+  const expected = items.reduce((sum, i) => sum + i.price, 0);
+  expect(calculateTotal(items)).toBe(expected);
+});
+```
+
+✅ **CORRECT** - An independent, known literal:
+```typescript
+it('sums line items', () => {
+  expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
+});
+```
+
+The same holds when the expected value comes from calling a production helper the code also uses: a bug in that helper moves both sides together. Expected values come from a worked example, the spec, or a literal.
+
 ---
 
 ## No 1:1 Mapping Between Tests and Implementation

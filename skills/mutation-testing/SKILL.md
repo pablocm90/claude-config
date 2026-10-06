@@ -423,6 +423,7 @@ When analyzing code changes on a branch:
 - [ ] Tests only verify function was called, not with what
 - [ ] Tests don't verify return values
 - [ ] Boundary values not tested
+- [ ] Expected values computed through a production helper the code also calls (a mutant in that helper moves both sides and survives)
 
 ### Questions to Ask:
 

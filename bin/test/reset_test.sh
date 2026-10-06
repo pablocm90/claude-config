@@ -80,6 +80,17 @@ case "$out" in *usage*) ;; *) echo "FAIL: reset without a slug says how to call 
 reset "$ws" no-such-task && { echo "FAIL: reset of a task with no worktree reports success"; fails=$((fails + 1)); }
 rm -rf "$ws" "$ws.origin" "$ws.seed"
 
+# A leftover folder where a worktree used to be is not a checkout of its own:
+# git would resolve it upward to the main checkout and reset that instead.
+ws=$(mktemp -d)
+merged_workspace "$ws"
+mkdir -p "$ws/app/.claude/worktrees/gone"
+main_before=$(git -C "$ws/app" rev-parse HEAD)
+reset "$ws" gone && { echo "FAIL: reset of a folder that is no worktree reports success"; fails=$((fails + 1)); }
+[ "$(git -C "$ws/app" rev-parse --abbrev-ref HEAD)" = master ] && [ "$(git -C "$ws/app" rev-parse HEAD)" = "$main_before" ] ||
+  { echo "FAIL: a leftover worktree folder leaves the main checkout alone"; fails=$((fails + 1)); }
+rm -rf "$ws" "$ws.origin" "$ws.seed"
+
 # Inside a task window the slug is the window's name.
 ws=$(mktemp -d)
 merged_workspace "$ws"

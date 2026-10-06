@@ -272,6 +272,9 @@ cmd_reset() {
   while IFS= read -r r; do
     wt="$r/.claude/worktrees/$slug"
     [ -d "$wt" ] || continue
+    if [ "$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null)" != "$(cd "$wt" && pwd -P)" ]; then
+      die "$wt is not a git worktree — remove the leftover folder (nothing reset)"
+    fi
     if [ -n "$(git -C "$wt" status --porcelain)" ]; then
       die "worktree $wt is dirty — commit or discard first (nothing reset)"
     fi

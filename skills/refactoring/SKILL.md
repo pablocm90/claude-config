@@ -52,6 +52,7 @@ When deciding *what* to refactor and *which direction*:
 
 - Load the `connascence` skill for a coupling taxonomy that maps to refactoring priorities (stronger connascence → higher priority)
 - Load the `code-smells` skill to name the problem before reaching for a technique
+- Read [resources/deep-modules.md](resources/deep-modules.md) when the question is the module's *shape*: depth, seams, what to merge behind a smaller interface
 
 ## Priority Classification
 

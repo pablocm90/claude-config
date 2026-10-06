@@ -28,7 +28,7 @@ The user decides every definition. You propose, check and write.
 
 ## ADRs
 
-Offer one only for a decision that is hard to reverse (or easy to undo by mistake), a real trade-off, and surprising without context: the `adr` agent's bar. A paragraph of context, decision and reason is enough; list rejected alternatives only when the rejection is non-obvious.
+Offer one only for a decision that is hard to reverse (or easy to undo by mistake), a real trade-off, and surprising without context: the `adr` agent's bar. When the user says yes, the `adr` agent writes it, so numbering, the index and the template stay its own.
 
 ## Done when
 

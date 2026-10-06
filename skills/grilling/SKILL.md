@@ -26,7 +26,7 @@ When a term the project's glossary defines differently, or a word doing two jobs
 
 ## Capture as you go
 
-Write each decision down the moment it lands, where it will be used: the plan in `plans/` when there is one, otherwise a running list you show back every few answers. A decision that lives only in the conversation is lost at the next handoff.
+Write each decision down the moment it lands, in the plan in `plans/`; when there is none yet, start `plans/<yyyy-mm-dd>-<slug>.md` and write it there. A decision that lives only in the conversation is lost at the next handoff.
 
 ## Done when
 

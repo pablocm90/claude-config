@@ -95,7 +95,7 @@ FOR EACH STEP:
     │   - Produces a mutation testing report
     │
     ├─► KILL MUTANTS: Address surviving mutants
-    │   - Add or strengthen tests for surviving mutants
+    │   - Answer each survivor on the `mutation-testing` ladder
     │   - Ask the human when a surviving mutant's value is ambiguous
     │   - All tests pass after fixes
     │

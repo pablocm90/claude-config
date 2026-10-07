@@ -85,7 +85,31 @@ Use `build_*` (in-memory, `Model.new`) by default. Only use `create_*` (`Model.c
 
 ## No `setup` Instance Variables
 
-`setup do @user = ... end` is the Minitest equivalent of `let`/`beforeEach` shared mutable state — one test mutating `@user` can break another depending on run order. Call builders fresh inside each test instead.
+`setup do @user = ... end` is the Minitest equivalent of `let`/`beforeEach` shared mutable state — one test mutating `@user` can break another depending on run order. Call builders fresh inside each test instead. When several tests share an arranged scene, a private method in the test class (`def scene(**overrides)`) returns it fresh on every call; the test passes only the overrides its assertion reads.
+
+## Table Tests
+
+Cases that share arrange and assert and differ only in data are one table. Loop **outside** `test`, so each row defines its own named test and a failure names its row; a loop inside one test stops at the first failing row and hides which one it was.
+
+```ruby
+{
+  "a negative amount" => [{amount: -100}, "Amount must be positive"],
+  "an amount over the limit" => [{amount: 10_001}, "Amount over limit"],
+  "a two-digit CVV" => [{cvv: "12"}, "Invalid CVV"]
+}.each do |reason, (overrides, error)|
+  test "rejects #{reason}" do
+    assert_equal error, process_payment(build_payment(**overrides)).error
+  end
+end
+```
+
+## What Not to Test in Rails
+
+Stock Rails is the framework's to test: a plain `belongs_to`/`has_many`, a `presence`/`uniqueness` validation with no custom condition, a scope that is a bare `where`, a callback Rails fires. Test the rule your code adds on top — a custom validator, a scope with logic, a conditional callback — through the model or service that uses it.
+
+## One Layer per Behaviour
+
+The model, service or query that decides a rule owns its cases. A request or controller test asserts what that layer adds — status, rendering shape, authorisation — through one representative case, not the rule's cases again. Correlated counts are one assertion: `assert_difference({"Invoice.count" => 1, "Payment.count" => -1}) { ... }`.
 
 ## Minitest Quick Reference
 

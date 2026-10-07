@@ -91,7 +91,8 @@ Check that tests follow principles:
 - ❌ More production code than needed to pass current test
 - ❌ Adding features "while you're there" without tests
 - ❌ Tests examining implementation details
-- ❌ Missing edge case tests
+- ❌ A branch with no case, or several cases down one branch (`testing`, "One Test per Branch")
+- ❌ Tests of appearance, framework guarantees or trivial code, and ghost tests of removed things
 - ❌ Using `any` types or type assertions in tests
 - ❌ Using `let` or `beforeEach` (should use factories)
 - ❌ Skipping refactoring assessment when green
@@ -133,23 +134,21 @@ Replace with behavior-focused tests:
 - "should reject payments exceeding maximum amount"
 Test the outcome, not the internal call
 
-#### 3. Missing edge case coverage
+#### 3. Threshold without a case on it
 **File**: `src/order/order-processor.ts:23-31`
-**Issue**: Free shipping logic has no test for exactly £50 boundary
-**Impact**: Boundary condition untested - may have off-by-one error
-**Recommendation**: Add test case for order total exactly at £50 threshold
+**Issue**: The free-shipping table has £40 and £60 rows, none at exactly £50
+**Impact**: `>` and `>=` are indistinguishable — an off-by-one would pass
+**Recommendation**: Add a £50 row to the existing table; no new test
 
-### 📊 Coverage Assessment
-- Production files changed: 3
-- Test files changed: 2
-- Untested production code: 1 function
-- Behavior coverage: ~85% (missing edge cases)
+### 🗑️ Delete or Merge
+- `order-processor.test.ts:40-72`: three tests that differ only in the order total → one table
+- `order-processor.test.ts:88`: "renders the shipping label" asserts static copy → delete
 
 ### 🎯 Next Steps
 1. Fix the test-first violation in payment-processor.ts
 2. Refactor implementation-focused tests to behavior-focused tests
-3. Add missing edge case tests
-4. Achieve 100% behavior coverage before proceeding
+3. Add the £50 row to the shipping table
+4. Apply the deletions and merges above
 ```
 
 ## Coaching Guidance by Phase

@@ -5,20 +5,24 @@ description: Test-Driven Development workflow. Use for ALL code changes - featur
 
 # Test-Driven Development
 
-TDD is the fundamental practice. Every line of production code must be written in response to a failing test.
+TDD is the fundamental practice. Every line of production behaviour must be written in response to a failing test.
+
+**Behaviour, not appearance.** Static copy (labels, help text, template bodies), styling and layout are verified live — a screenshot or a design round with the human — and pinned by no test. When a style encodes a rule (overdue rows turn red), the rule is behaviour: test the rule. Removing something deletes its tests with it and adds none, unless the absence is itself a requirement (a field that must not leak, an action a role must not see).
 
 **For how to write good tests**, load the `testing` skill. This skill focuses on the TDD workflow/process.
 
-**Ruby/Rails/Minitest specifics** (SimpleCov verification, `rails test` commands, Minitest examples): see `resources/rails.md`.
+**Ruby/Rails/Minitest specifics** (`rails test` commands, Minitest examples): see `resources/rails.md`.
 
 ---
 
 ## RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR-CLEANUP Cycle
 
 ### RED: Write Failing Test First
-- NO production code until you have a failing test
+- NO production behaviour until you have a failing test
+- **Name the break** before writing the test body: the production change that would make this test fail, and that no existing test already catches. If only an intentional decision would fail it (a constant's value on its own, a wording, a pixel), it is a change detector: test the behaviour that depends on the decision, or write nothing
+- When an existing test already sets up the behaviour, the red step is the next assertion in that test or a new row in its table, not a copy of its setup
 - Test describes desired behavior, not implementation
-- Test should fail for the right reason
+- Test should fail for the right reason. A test green on its first run demanded nothing: delete it, unless applying a mutant proves it catches something no other test does
 
 ### GREEN: Minimum Code to Pass
 - Write ONLY enough code to make the test pass
@@ -44,8 +48,8 @@ If you find yourself jumping to transformation 5+ immediately, you likely need m
 - Produce a mutation testing report (killed/survived/score)
 - This validates whether your tests would catch real bugs
 
-### KILL MUTANTS: Address Surviving Mutants
-- Add or strengthen tests to kill surviving mutants
+### KILL MUTANTS: Answer Surviving Mutants
+- Answer each survivor on the ladder in `mutation-testing` Step 4, cheapest rung first: delete the code before tightening a test, tighten a test before adding one
 - Verify kills by actually applying the mutant and running tests — not by guessing
 - Ask the human when a surviving mutant's value is ambiguous; a mutant may be justified as equivalent
 - All tests pass after fixes
@@ -58,7 +62,7 @@ If you find yourself jumping to transformation 5+ immediately, you likely need m
 
 ### CLEANUP: Delete What the Change Made Unnecessary
 - Run the `cleanup` skill over the change, scoped to this diff
-- Look for transformations or indexes redundant with data already known upstream, back-compat shims, unnecessary defensive code, and deduplication that should have been unnecessary
+- It reads the change's tests as well as its production code, and deletes what the change made redundant in both
 - Print findings, fix them, then reinspect — loop until a pass finds nothing
 - Cleanup subtracts; if a finding wants new abstraction it belongs in REFACTOR
 - All tests must pass after each fix
@@ -121,125 +125,9 @@ Test Evidence:
 
 ---
 
-## Coverage Verification - CRITICAL
+## Coverage
 
-### NEVER Trust Coverage Claims Without Verification
-
-**Always run coverage yourself before approving PRs.**
-
-### Verification Process
-
-**Before approving any PR claiming "100% coverage":**
-
-1. Check out the branch
-   ```bash
-   git checkout feature-branch
-   ```
-
-2. Run coverage verification:
-   ```bash
-   cd packages/core
-   pnpm test:coverage
-   # OR
-   pnpm exec vitest run --coverage
-   ```
-
-3. Verify ALL metrics hit 100%:
-   - Lines: 100% ✅
-   - Statements: 100% ✅
-   - Branches: 100% ✅
-   - Functions: 100% ✅
-
-4. Check that tests are behavior-driven (not testing implementation details)
-
-**For anti-patterns that create fake coverage (coverage theater)**, see the `testing` skill.
-
-### Reading Coverage Output
-
-Look for the "All files" line in coverage summary:
-
-```
-File           | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
----------------|---------|----------|---------|---------|-------------------
-All files      |     100 |      100 |     100 |     100 |
-setup.ts       |     100 |      100 |     100 |     100 |
-context.ts     |     100 |      100 |     100 |     100 |
-endpoints.ts   |     100 |      100 |     100 |     100 |
-```
-
-✅ This is 100% coverage - all four metrics at 100%.
-
-### Red Flags
-
-Watch for these signs of incomplete coverage:
-
-❌ **PR claims "100% coverage" but you haven't verified**
-- Never trust claims without running coverage yourself
-
-❌ **Coverage summary shows <100% on any metric**
-```
-All files      |   97.11 |    93.97 |   81.81 |   97.11 |
-```
-- This is NOT 100% coverage (Functions: 81.81%, Lines: 97.11%)
-
-❌ **"Uncovered Line #s" column shows line numbers**
-```
-setup.ts       |   95.23 |      100 |      60 |   95.23 | 45-48, 52-55
-```
-- Lines 45-48 and 52-55 are not covered
-
-❌ **Coverage gaps without explicit exception documentation**
-- If coverage <100%, exception should be documented (see Exception Process below)
-
-### When Coverage Drops, Ask
-
-**"What business behavior am I not testing?"**
-
-NOT "What line am I missing?"
-
-Add tests for behavior, and coverage follows naturally.
-
----
-
-## 100% Coverage Exception Process
-
-### Default Rule: 100% Coverage Required
-
-No exceptions without explicit approval and documentation.
-
-### Requesting an Exception
-
-If 100% coverage cannot be achieved:
-
-**Step 1: Document in package README**
-
-Explain:
-- Current coverage metrics
-- WHY 100% cannot be achieved in this package
-- WHERE the missing coverage will come from (integration tests, E2E, etc.)
-
-**Step 2: Get explicit approval**
-
-From project maintainer or team lead
-
-**Step 3: Document in CLAUDE.md**
-
-Under "Test Coverage: 100% Required" section, list the exception
-
-**Example Exception:**
-
-```markdown
-## Current Exceptions
-
-- **Next.js Adapter**: 86% function coverage
-  - Documented in `/packages/nextjs-adapter/README.md`
-  - Missing coverage from SSR functions (tested in E2E layer)
-  - Approved: 2024-11-15
-```
-
-### Remember
-
-The burden of proof is on the requester. 100% is the default expectation.
+Coverage is a diagnostic, not a target. An uncovered line is a question: delete it, or name the behaviour it serves and test that behaviour. Mutation testing, not a coverage number, is the evidence that tests catch bugs. For tests that execute code without checking it (coverage theater), see the `testing` skill.
 
 ---
 
@@ -253,7 +141,7 @@ The burden of proof is on the requester. 100% is the default expectation.
 3. **Implement minimum** - just enough to pass
 4. **Run test** - confirm it passes
 5. **Run mutation testing** - verify tests catch real bugs
-6. **Kill surviving mutants** - strengthen tests (ask human when ambiguous)
+6. **Answer surviving mutants** - on the `mutation-testing` ladder (ask human when ambiguous)
 7. **Refactor if valuable** - improve code structure
 8. **Commit** - with conventional commit message
 
@@ -273,7 +161,7 @@ if (user.name === '') {
 
 # 3. Run mutation testing to verify test strength
 
-# 4. Kill surviving mutants (ask human when ambiguous)
+# 4. Answer surviving mutants on the ladder (ask human when ambiguous)
 
 # 5. Refactor if needed (extract validation, improve naming)
 
@@ -311,7 +199,6 @@ Before submitting PR:
 
 - [ ] All tests must pass
 - [ ] All linting and type checks must pass
-- [ ] **Coverage verification REQUIRED** - claims must be verified before review/approval
 - [ ] PRs focused on single feature or fix
 - [ ] Include behavior description (not implementation details)
 
@@ -370,7 +257,6 @@ For detailed refactoring methodology, load the `refactoring` skill.
 - ❌ Testing implementation details (spies on internal methods)
 - ❌ 1:1 mapping between test files and implementation files
 - ❌ Using `let`/`beforeEach` for test data
-- ❌ Trusting coverage claims without verification
 - ❌ Mocking the function being tested
 - ❌ Redefining schemas in test files
 - ❌ Factories returning partial/incomplete objects
@@ -384,11 +270,10 @@ For detailed refactoring methodology, load the `refactoring` skill.
 
 Before marking work complete:
 
-- [ ] Every production code line has a failing test that demanded it
+- [ ] Every line of production behaviour has a failing test that demanded it
 - [ ] Commit history shows TDD evidence (or documented exception)
 - [ ] All tests pass
-- [ ] Coverage verified at 100% (or exception documented)
-- [ ] Mutation testing run and surviving mutants addressed
+- [ ] Mutation testing run, and every survivor answered on the ladder with its rung in the report
 - [ ] Test factories used (no `let`/`beforeEach`)
 - [ ] Tests verify behavior (not implementation details)
 - [ ] Refactoring assessed and applied if valuable

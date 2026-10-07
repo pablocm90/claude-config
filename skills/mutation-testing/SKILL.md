@@ -75,7 +75,7 @@ For each changed function/method, work through the mutation operators (see Mutat
 2. **Run**: Execute the test suite
 3. **Evaluate**: Did a test fail?
    - **Yes** → mutant killed (good). Revert the mutation.
-   - **No** → mutant survived (bad). Revert the mutation, then add or strengthen a test.
+   - **No** → mutant survived. Revert the mutation, then answer it in Step 4.
 4. **Revert**: Always restore the original code before the next mutation
 
 **Always revert each mutation before applying the next.** Never leave mutated code in place.
@@ -98,8 +98,10 @@ After working through the mutations, produce a summary:
 - `isEligible`: `>=` → `>` — killed by "returns true at exact boundary"
 
 ### Survived (tests DID NOT catch the mutation)
-- `applyDiscount`: `>` → `>=` — no test for boundary value at exactly 100
-  → **Action**: Add boundary test for discount threshold
+- `applyDiscount`: `>` → `>=` — no case sits exactly on 100
+  → **Rung 3**: add a `100` row to the discount table
+- `formatLabel`: `?? ''` → `?? 'x'` — no caller passes `undefined`
+  → **Rung 1**: deleted the fallback
 
 ### Summary
 - Mutations applied: 8
@@ -108,24 +110,17 @@ After working through the mutations, produce a summary:
 - Mutation score: 75%
 ```
 
-### Step 4: Kill Surviving Mutants
+### Step 4: Answer Surviving Mutants
 
-Not every surviving mutant warrants a new test. Some mutations produce equivalent behavior, and some boundary cases are low-risk enough that the test would add noise without meaningful protection.
+A survivor is a question, not a quota. Answer each one on the first rung that holds, and record the rung in the report:
 
-**Fix immediately** when:
-- The mutation represents a realistic bug (wrong operator, inverted condition)
-- The surviving mutant is in critical business logic (money, permissions, eligibility)
-- The fix is a simple boundary test or stronger assertion
+1. **Delete the code.** The mutant survives because nothing needs that code: a guard that cannot fire, a default never reached, a branch no caller takes. Confirm no caller depends on it, then delete it.
+2. **Tighten an existing test.** A sharper assertion, or a fixture whose values disagree (ids out of date order, amounts that cannot sum by accident), lets a test that already exists kill it.
+3. **Add a row** to an existing table test.
+4. **Write a new test**, only for a business rule you can name that no existing test's setup reaches. Follow TDD: watch it fail against the mutant, then pass against the original.
+5. **Accept it.** Record it as not pinned, with the reason: equivalent, or a change no one would call a bug. In money, permissions and eligibility, accept only a proven equivalent.
 
-**Ask the human** when:
-- You're unsure whether the mutation represents a real risk
-- The test to kill it would be complex or hard to name clearly
-- The mutation is in a code path that's also covered by integration/E2E tests
-- The surviving mutant feels like an equivalent mutant but you're not certain
-
-Present the mutation, explain why the current tests don't catch it, and let the human decide whether it's worth a new test.
-
-When fixing, follow TDD — write the failing test first, verify it fails against the mutated code, then verify it passes against the original code.
+**Ask the human** when you cannot tell whether the mutant breaks a rule someone would name, or when the rung-4 test would be hard to name. Present the mutation, why no current test catches it, and the rung you propose.
 
 ---
 
@@ -333,8 +328,8 @@ it('saves order to database', () => {
 | State | Meaning | Action |
 |-------|---------|--------|
 | **Killed** | Test failed when mutant applied | Good - tests are effective |
-| **Survived** | Tests passed with mutant active | Bad - add/strengthen test |
-| **No Coverage** | No test exercises this code | Add behavior test |
+| **Survived** | Tests passed with mutant active | Answer it on the Step 4 ladder |
+| **No Coverage** | No test exercises this code | Delete the code, or name its behaviour and test that |
 | **Timeout** | Tests timed out (infinite loop) | Counted as detected |
 | **Equivalent** | Mutant produces same behavior | No action - not a real bug |
 

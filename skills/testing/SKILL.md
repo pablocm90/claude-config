@@ -11,7 +11,7 @@ Examples below use TypeScript/Vitest. For Rails/Minitest-specific idioms (builde
 
 ## Core Principle
 
-**Test behavior, not implementation.** 100% coverage through business behavior, not implementation details.
+**Test behavior, not implementation.** Every business behaviour is tested through the public API, not through implementation details.
 
 **Example:** Validation code in `payment-validator.ts` gets 100% coverage by testing `processPayment()` behavior, NOT by directly testing validator functions.
 

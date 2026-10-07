@@ -133,7 +133,7 @@ https://www.linkedin.com/pulse/tdd-properties-good-tests-dave-farley-iexge/
 
 ## Verify Surviving Mutants By Running Them
 
-Do not guess whether a reported mutant survives — **apply the mutation to the production code and run the tests.** If they pass, the mutant genuinely survives and needs a new or stronger test. If they fail, it was a false positive.
+Do not guess whether a reported mutant survives — **apply the mutation to the production code and run the tests.** If they pass, the mutant genuinely survives: answer it on the `mutation-testing` Step 4 ladder. If they fail, it was a false positive.
 
 Expect a significant fraction of reported mutants to be false positives — in practice, roughly two-thirds may already be killed by existing tests. This is normal; the verification step is what matters.
 
@@ -141,7 +141,7 @@ For each reported surviving mutant:
 1. Apply the mutation to the production code (change the operator, swap the return value, remove the line)
 2. Run the relevant tests
 3. If tests fail → mutant is already killed, no action needed
-4. If tests pass → mutant survives, write a test that catches it
+4. If tests pass → mutant survives, answer it on the `mutation-testing` Step 4 ladder
 5. Revert the mutation before committing
 
 ## Guidelines

@@ -2,7 +2,7 @@
 
 ## Core Philosophy
 
-**TEST-DRIVEN DEVELOPMENT IS NON-NEGOTIABLE.** Every single line of production code must be written in response to a failing test. No exceptions. This is not a suggestion or a preference - it is the fundamental practice that enables all other principles in this document.
+**TEST-DRIVEN DEVELOPMENT IS NON-NEGOTIABLE.** Every line of production behaviour must be written in response to a failing test. No exceptions. Static copy, styling, layout and removals are not behaviour to pin: `tdd` says how they are verified. This is not a suggestion or a preference - it is the fundamental practice that enables all other principles in this document.
 
 I follow Test-Driven Development (TDD) with a strong emphasis on behavior-driven testing and functional programming principles. All work should be done in small, incremental changes that maintain a working state throughout development.
 
@@ -26,7 +26,7 @@ I follow Test-Driven Development (TDD) with a strong emphasis on behavior-driven
 
 ## Testing Principles
 
-**Core principle**: Test behavior, not implementation. 100% coverage through business behavior.
+**Core principle**: Test behavior, not implementation. Each test names the break it catches; coverage is a diagnostic, not a target.
 
 **Quick reference:**
 - Write tests first (TDD non-negotiable)
@@ -72,10 +72,10 @@ For detailed patterns and examples, load the `functional` skill.
 **Core principle**: RED-GREEN-MUTATE-KILL MUTANTS-REFACTOR-CLEANUP in small, known-good increments. TDD is the fundamental practice.
 
 **Quick reference:**
-- RED: Write failing test first (NO production code without failing test)
+- RED: Write failing test first (NO production behaviour without a failing test)
 - GREEN: Write MINIMUM code to pass test
 - MUTATE: Run mutation testing to verify test effectiveness, produce a report
-- KILL MUTANTS: Address surviving mutants (ask human when value is ambiguous)
+- KILL MUTANTS: Answer each survivor on the `mutation-testing` ladder, deleting code before adding a test (ask human when value is ambiguous)
 - REFACTOR: Assess improvement opportunities (only refactor if adds value)
 - CLEANUP: Run the `cleanup` skill over the change — strip redundant transformations, back-compat shims, needless defensive code and dedup; loop until reinspection is empty
 - **Wait for commit approval** before every commit (exception: when `mmmss-stride` is loaded, the stride boundary is the approval point — commit each green stride, then stop for review)
@@ -173,7 +173,7 @@ Skills in a project's `.claude/skills/` are discovered only when the session is 
 **Core principle**: Think deeply, follow TDD strictly, capture learnings while context is fresh.
 
 **Quick reference:**
-- ALWAYS FOLLOW TDD - no production code without failing test
+- ALWAYS FOLLOW TDD - no production behaviour without a failing test
 - Assess refactoring after every green (but only if adds value)
 - Update CLAUDE.md when introducing meaningful changes
 - Ask "What do I wish I'd known at the start?" after significant changes

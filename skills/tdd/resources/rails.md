@@ -32,24 +32,6 @@ rails test --parallel                   # parallel on multi-core
 rerun --pattern 'app/**/*.rb' -- rails test  # watch mode (rerun/guard gem)
 ```
 
-## Coverage Verification with SimpleCov
-
-Ensure `test/test_helper.rb` starts SimpleCov before anything else:
-
-```ruby
-require "simplecov"
-SimpleCov.start "rails"
-```
-
-Run `rails test`, then check the terminal summary or open `coverage/index.html`:
-
-```
-Line Coverage: 100.0% (248 / 248 lines)
-Branch Coverage: 100.0% (64 / 64 branches)
-```
-
-Both Lines AND Branches must hit 100%. The HTML report highlights uncovered lines in red — look for them before believing any coverage claim.
-
 ## Rails-Flavoured Anti-Patterns
 
 - ❌ Stubbing private methods (implementation-detail testing)

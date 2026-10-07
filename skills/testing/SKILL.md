@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Testing patterns for behavior-driven tests. Use when writing tests, creating test factories, structuring test files, or deciding what to test and what not to. Includes Rails/Minitest patterns (resources/rails.md). Do NOT use for UI-specific testing (see front-end-testing or react-testing skills).
+description: Testing patterns for behavior-driven tests. Use when writing tests, creating test factories, structuring test files, or deciding what to test and what not to. Includes Rails/Minitest patterns (resources/rails.md). For UI-specific testing, also load front-end-testing.
 ---
 
 # Testing Patterns
@@ -99,7 +99,7 @@ it('sets isValidated flag', () => {
 
 ## Mock Only at System Boundaries
 
-Replace only what the test cannot control: the network (MSW in the browser), the clock, randomness, third-party SDKs, the filesystem. Your own modules and domain objects stay real, built with a factory; inside your code, mock only at a seam the project chose between layers (a data hook under a page). Assert what the code does with the mock's response, not that the mock was called: a test that fails only when the mock is removed is testing the mock.
+Replace only what the test cannot control: the network (MSW in the browser), the clock, randomness, third-party SDKs, the filesystem. Your own modules and domain objects stay real, built with a factory; inside your code, mock only at a seam the project chose between layers (a data hook under a page). Assert what the code does with the mock's response and, at a layer seam, the arguments it passes in — never merely that the mock was called: a test that fails only when the mock is removed is testing the mock.
 
 ---
 

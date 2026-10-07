@@ -21,7 +21,7 @@ I follow Test-Driven Development (TDD) with a strong emphasis on behavior-driven
 **Preferred Tools:**
 
 - **Language**: TypeScript (strict mode)
-- **Testing**: Vitest (prefer Browser Mode for UI tests) + Testing Library
+- **Testing**: Vitest + Testing Library (jsdom by default; a real browser only where the behaviour needs one)
 - **State Management**: Prefer immutable patterns
 
 ## Testing Principles
@@ -153,8 +153,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | Skill | Use when |
 |---|---|
 | `frontend-design` | Build distinctive, production-grade UI from scratch. |
-| `front-end-testing` | UI / DOM tests (Vitest Browser Mode + DOM Testing Library). |
-| `react-testing` | React components, hooks, context, forms. |
+| `front-end-testing` | UI tests — React components, hooks, forms, pages: environment, queries, waits, and which UI tests not to write. |
 
 ### Tier 4 — Project-scoped
 

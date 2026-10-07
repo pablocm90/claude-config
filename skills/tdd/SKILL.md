@@ -19,7 +19,7 @@ TDD is the fundamental practice. Every line of production behaviour must be writ
 
 ### RED: Write Failing Test First
 - NO production behaviour until you have a failing test
-- **Name the break** before writing the test body: the production change that would make this test fail, and that no existing test already catches. If only an intentional decision would fail it (a constant, a wording, a pixel), it is a change detector: test the behaviour that depends on the decision, or write nothing
+- **Name the break** before writing the test body: the production change that would make this test fail, and that no existing test already catches. If only an intentional decision would fail it (a constant's value on its own, a wording, a pixel), it is a change detector: test the behaviour that depends on the decision, or write nothing
 - When an existing test already sets up the behaviour, the red step is the next assertion in that test or a new row in its table, not a copy of its setup
 - Test describes desired behavior, not implementation
 - Test should fail for the right reason. A test green on its first run demanded nothing: delete it, unless applying a mutant proves it catches something no other test does

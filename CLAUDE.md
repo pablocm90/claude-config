@@ -77,7 +77,7 @@ For detailed patterns and examples, load the `functional` skill.
 - MUTATE: Run mutation testing to verify test effectiveness, produce a report
 - KILL MUTANTS: Answer each survivor on the `mutation-testing` ladder, deleting code before adding a test (ask human when value is ambiguous)
 - REFACTOR: Assess improvement opportunities (only refactor if adds value)
-- CLEANUP: Run the `cleanup` skill over the change — strip redundant transformations, back-compat shims, needless defensive code and dedup; loop until reinspection is empty
+- CLEANUP: Run the `cleanup` skill over the change, its tests included — strip redundant transformations, back-compat shims, needless defensive code, dedup, and tests the change made redundant; loop until reinspection is empty
 - **Wait for commit approval** before every commit (exception: when `mmmss-stride` is loaded, the stride boundary is the approval point — commit each green stride, then stop for review)
 - Each increment leaves codebase in working state
 **Canonical flow for non-trivial work:** `grilling` (while it is still an idea) → `story-splitting` → `planning` → `tdd` (→ `mutation-testing` → `refactoring` → `cleanup`). Add `find-gaps` whenever a plan or AC set feels thin. Insert `walking-skeleton` before `planning` when the first slice's job is to prove a path exists (greenfield, unproven integration, no deploy pipeline).

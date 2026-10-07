@@ -62,7 +62,7 @@ If you find yourself jumping to transformation 5+ immediately, you likely need m
 
 ### CLEANUP: Delete What the Change Made Unnecessary
 - Run the `cleanup` skill over the change, scoped to this diff
-- Look for transformations or indexes redundant with data already known upstream, back-compat shims, unnecessary defensive code, and deduplication that should have been unnecessary
+- It reads the change's tests as well as its production code, and deletes what the change made redundant in both
 - Print findings, fix them, then reinspect — loop until a pass finds nothing
 - Cleanup subtracts; if a finding wants new abstraction it belongs in REFACTOR
 - All tests must pass after each fix

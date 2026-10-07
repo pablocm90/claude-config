@@ -86,6 +86,8 @@ You do not need to apply every possible mutation to every line. Focus on:
 - Conditions with boundary values
 - Boolean logic with multiple operands
 
+Leave presentational code out of the run: static copy, layout and style props (`span`, `gap`, `align`, colours, `className`), theme and library props, and log messages. A mutant there changes only appearance, which is verified live (`tdd`, "Behaviour, not appearance"), so no test should exist to kill it.
+
 ### Step 3: Produce a Report
 
 After working through the mutations, produce a summary:
@@ -278,6 +280,8 @@ it('saves order to database', () => {
 | `"text"` | `""` | Non-empty string behavior |
 | `""` | `"Stryker was here!"` | Empty string behavior |
 
+Mutate the strings the code compares, sends or looks up (statuses, keys, routes, params), not copy a user reads.
+
 ### Array Declaration Mutations
 
 | Original | Mutated | Test Should Verify |
@@ -407,7 +411,7 @@ When analyzing code changes on a branch:
 - [ ] **Boolean logic**: Are all branches of &&, || tested?
 - [ ] **Return statements**: Would changing return value be detected?
 - [ ] **Method calls**: Would removing or swapping methods be detected?
-- [ ] **String literals**: Would empty strings be detected?
+- [ ] **String literals the code compares or sends**: Would changing them be detected? (Copy is out of scope.)
 - [ ] **Array operations**: Would empty arrays be detected?
 
 ### Red Flags (Likely Surviving Mutants):
@@ -440,13 +444,16 @@ it('validates age', () => {
   expect(isAdult(10)).toBe(false);
 });
 
-// Strengthened with boundary values
-it('validates age at boundary', () => {
-  expect(isAdult(17)).toBe(false);  // Just below
-  expect(isAdult(18)).toBe(true);   // Exactly at boundary
-  expect(isAdult(19)).toBe(true);   // Just above
+// Strengthened: one case on the threshold, one just past it, as a table
+test.for([
+  { age: 17, isAdult: false },  // just below
+  { age: 18, isAdult: true },   // exactly on the threshold
+])('age $age is adult: $isAdult', ({ age, isAdult: expected }) => {
+  expect(isAdult(age)).toBe(expected);
 });
 ```
+
+The 18 row tells `>=` from `>`; a third row at 19 goes down the same branch as 18 and catches nothing more.
 
 ### Pattern: Test Both Branches of Conditions
 
@@ -456,17 +463,13 @@ it('returns access result', () => {
   expect(canAccess(true, true)).toBe(true);
 });
 
-// Strengthened - tests all meaningful combinations
-it('grants access when admin', () => {
-  expect(canAccess(true, false)).toBe(true);
-});
-
-it('grants access when owner', () => {
-  expect(canAccess(false, true)).toBe(true);
-});
-
-it('denies access when neither', () => {
-  expect(canAccess(false, false)).toBe(false);
+// Strengthened - one row per meaningful combination
+test.for([
+  { who: 'an admin', isAdmin: true, isOwner: false, granted: true },
+  { who: 'the owner', isAdmin: false, isOwner: true, granted: true },
+  { who: 'anyone else', isAdmin: false, isOwner: false, granted: false },
+])('access for $who: $granted', ({ isAdmin, isOwner, granted }) => {
+  expect(canAccess(isAdmin, isOwner)).toBe(granted);
 });
 ```
 

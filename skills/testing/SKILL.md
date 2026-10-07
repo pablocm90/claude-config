@@ -97,6 +97,12 @@ it('sets isValidated flag', () => {
 
 ---
 
+## Mock Only at System Boundaries
+
+Replace only what the test cannot control: the network (MSW in the browser), the clock, randomness, third-party SDKs, the filesystem. Your own modules and domain objects stay real, built with a factory; inside your code, mock only at a seam the project chose between layers (a data hook under a page). Assert what the code does with the mock's response, not that the mock was called: a test that fails only when the mock is removed is testing the mock.
+
+---
+
 ## Tests as Design Feedback (Listening to Tests)
 
 When a test is hard to write, that's not a testing problem — it's a **design signal**. The test is telling you something about the production code.
@@ -343,7 +349,7 @@ When writing tests, verify:
 
 - [ ] Each test names a break that no other test catches
 - [ ] Testing behavior through public API (not implementation details, private methods or internal state)
-- [ ] No mocks of the function being tested
+- [ ] Mocks only at system boundaries or a chosen layer seam; never the function being tested
 - [ ] No tests of framework guarantees, trivial code, type-checked inputs, or appearance
 - [ ] One case per branch; inputs down the same branch share one table test; a threshold has a case on it and one just past it
 - [ ] Each rule asserted at the one layer that owns it

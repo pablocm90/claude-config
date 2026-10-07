@@ -1,19 +1,62 @@
 ---
 name: testing
-description: Testing patterns for behavior-driven tests. Use when writing tests, creating test factories, structuring test files, or deciding what to test. Includes Rails/Minitest patterns (resources/rails.md). Do NOT use for UI-specific testing (see front-end-testing or react-testing skills).
+description: Testing patterns for behavior-driven tests. Use when writing tests, creating test factories, structuring test files, or deciding what to test and what not to. Includes Rails/Minitest patterns (resources/rails.md). Do NOT use for UI-specific testing (see front-end-testing or react-testing skills).
 ---
 
 # Testing Patterns
 
 For verifying test effectiveness through mutation analysis, load the `mutation-testing` skill. For evaluating test quality against Dave Farley's properties, load the `test-design-reviewer` skill.
 
-Examples below use TypeScript/Vitest. For Rails/Minitest-specific idioms (builder modules, `build_*` vs `create_*`, assertion reference), see [resources/rails.md](resources/rails.md).
+Examples below use TypeScript/Vitest. For Rails/Minitest-specific idioms (builder modules, `build_*` vs `create_*`, table tests, assertion reference), see [resources/rails.md](resources/rails.md).
 
 ## Core Principle
 
+**Test as little as possible to reach a given level of confidence** (Kent Beck). Each test names the break it catches — a production change someone would call a bug — and no other test catches it. Tests are code, and code is a liability: a test that catches nothing new costs maintenance forever.
+
 **Test behavior, not implementation.** Every business behaviour is tested through the public API, not through implementation details.
 
-**Example:** Validation code in `payment-validator.ts` gets 100% coverage by testing `processPayment()` behavior, NOT by directly testing validator functions.
+---
+
+## What Not to Test
+
+Test the logic your code adds, and reach everything else through it:
+
+- **Framework and library guarantees.** That a prop renders, a route resolves, a schema rejects the wrong type, a query cache caches, a stock ORM association or validation works. A test that would still pass with all your own code deleted is testing the framework. Your declarations on top of it are behaviour where real input depends on them: a field the server really sends as null is a row in the payload table.
+- **Constructors, getters, constants and pass-through code.** Assert the first consumer-visible result that depends on them, unless they validate, normalise, default, derive or enforce something. A constant's value is a decision; a relation between constants (every monitored integration has a job that runs it) is behaviour.
+- **What the type checker already forbids.** No test that a function rejects an argument its signature cannot receive.
+- **Static copy, styling and layout.** Verified live (`tdd`, "Behaviour, not appearance").
+
+---
+
+## One Test per Branch, Not per Input
+
+Before adding a test that differs from a neighbour only in an input value, confirm the production code branches on that difference. A second input down the same branch catches nothing the first did not.
+
+- One case per branch or partition, and one decision per case: two decisions riding on one row hide which one broke.
+- At a threshold, one case on it and one just past it: that pair is what tells `>` from `>=`. Write it as a literal; a test that fails on an off-by-one is no change detector, even though moving the threshold fails it too.
+- Cases that share arrange and assert and differ only in data are **one table test**, with literal rows:
+
+```typescript
+test.for([
+  { reason: 'a negative amount', overrides: { amount: -100 }, error: 'Amount must be positive' },
+  { reason: 'an amount over the limit', overrides: { amount: 10_001 }, error: 'Amount over limit' },
+  { reason: 'a two-digit CVV', overrides: { cvv: '12' }, error: 'Invalid CVV' },
+])('rejects $reason', ({ overrides, error }) => {
+  expect(processPayment(getMockPayment(overrides))).toEqual({ success: false, error });
+});
+
+test('processes a payment exactly at the limit', () => {
+  expect(processPayment(getMockPayment({ amount: 10_000 })).success).toBe(true);
+});
+```
+
+The accepted case sits on the threshold, so it also kills the `>` → `>=` mutant. Separate tests are right when the setup, the assertion or the scenario genuinely differs.
+
+---
+
+## One Layer per Behaviour
+
+Each rule is tested at the layer that owns it: the query, service or pure function that decides it. A layer above asserts only what it adds — wiring, rendering, authorisation — through one representative case, not the rule's cases again.
 
 ---
 
@@ -28,53 +71,29 @@ Never test implementation details. Test behavior through public APIs.
 
 **When you discover a method is private (or should be):** Make it private if not already, then test through the public method that calls it. This is a refactoring opportunity, not an obstacle.
 
-### Examples
-
 ❌ **WRONG - Testing implementation:**
 ```typescript
 // ❌ Testing HOW (implementation detail)
-it('should call validateAmount', () => {
+it('calls validateAmount', () => {
   const spy = jest.spyOn(validator, 'validateAmount');
   processPayment(payment);
   expect(spy).toHaveBeenCalled(); // Tests HOW, not WHAT
 });
 
 // ❌ Testing private methods
-it('should validate CVV format', () => {
+it('validates CVV format', () => {
   const result = validator._validateCVV('123'); // Private method!
   expect(result).toBe(true);
 });
 
 // ❌ Testing internal state
-it('should set isValidated flag', () => {
+it('sets isValidated flag', () => {
   processPayment(payment);
   expect(processor.isValidated).toBe(true); // Internal state
 });
 ```
 
-✅ **CORRECT - Testing behavior through public API:**
-```typescript
-it('should reject negative amounts', () => {
-  const payment = getMockPayment({ amount: -100 });
-  const result = processPayment(payment);
-  expect(result.success).toBe(false);
-  expect(result.error).toContain('Amount must be positive');
-});
-
-it('should reject invalid CVV', () => {
-  const payment = getMockPayment({ cvv: '12' }); // Only 2 digits
-  const result = processPayment(payment);
-  expect(result.success).toBe(false);
-  expect(result.error).toContain('Invalid CVV');
-});
-
-it('should process valid payments', () => {
-  const payment = getMockPayment({ amount: 100, cvv: '123' });
-  const result = processPayment(payment);
-  expect(result.success).toBe(true);
-  expect(result.data.transactionId).toBeDefined();
-});
-```
+✅ **CORRECT:** the table above — `processPayment`'s results, with no reference to the validator inside it.
 
 ---
 
@@ -96,50 +115,11 @@ For the vocabulary of design problems, load the `code-smells` skill. For couplin
 
 ---
 
-## Coverage Through Behavior
-
-Validation code gets 100% coverage by testing the behavior it protects:
-
-```typescript
-// Tests covering validation WITHOUT testing validator directly
-describe('processPayment', () => {
-  it('should reject negative amounts', () => {
-    const payment = getMockPayment({ amount: -100 });
-    const result = processPayment(payment);
-    expect(result.success).toBe(false);
-  });
-
-  it('should reject amounts over 10000', () => {
-    const payment = getMockPayment({ amount: 15000 });
-    const result = processPayment(payment);
-    expect(result.success).toBe(false);
-  });
-
-  it('should reject invalid CVV', () => {
-    const payment = getMockPayment({ cvv: '12' });
-    const result = processPayment(payment);
-    expect(result.success).toBe(false);
-  });
-
-  it('should process valid payments', () => {
-    const payment = getMockPayment({ amount: 100, cvv: '123' });
-    const result = processPayment(payment);
-    expect(result.success).toBe(true);
-  });
-});
-
-// ✅ Result: payment-validator.ts has 100% coverage through behavior
-```
-
-**Key insight:** When coverage drops, ask **"What business behavior am I not testing?"** not "What line am I missing?"
-
----
-
 ## Don't Extract for Testability
 
 Never extract a function into its own file purely to give it its own unit test. Extract for readability (a descriptive name clarifies intent), for DRY (same **knowledge** used in multiple places — see the `refactoring` skill's "DRY = Knowledge, Not Code" rule), or for separation of concerns. Not for testability.
 
-If code is inline in a function, it gets coverage through that function's behavioral tests. Every layer has behavioral tests — domain functions have vitest unit tests, components have browser tests, pages have integration tests. There is no gap.
+If code is inline in a function, it is tested through that function's behavioral tests.
 
 The anti-pattern is creating a 1:1 mapping between extracted helpers and test files (see "No 1:1 Mapping" below). The extracted helper is an implementation detail of its consumer. Test the consumer's behavior.
 
@@ -173,7 +153,7 @@ it('returns claimed gifts in yourClaims and unclaimed in available', () => {
 });
 ```
 
-**When extraction IS justified (DRY):** If the same filtering logic is used by multiple consumers with the same business meaning, extract it. But test it through each consumer's behavior, not as an isolated unit.
+**When extraction IS justified (DRY):** If the same logic serves several consumers with the same business meaning, extract it. It is now a module with its own public API and owns its rules: test their cases there, once. Each consumer asserts only its wiring, through one representative case (see "One Layer per Behaviour").
 
 ---
 
@@ -183,14 +163,17 @@ For test data, use factory functions with optional overrides.
 
 ### Core Principles
 
-1. Return complete objects with sensible defaults
+1. **The factory is complete; the test body is not.** The factory returns a complete, valid object with sensible defaults. The test passes only the overrides its assertion reads — everything else is the factory's business.
 2. Accept `Partial<T>` overrides for customization
 3. Validate with real schemas (don't redefine)
-4. NO `let`/`beforeEach` - use factories for fresh state
+4. Fresh state per test: call the factory inside the test, not in `let`/`beforeEach`
+5. **A scene several tests share is a setup function, not a pasted literal.** A file-level `renderCard(overrides)` or `buildScene(overrides)` returns it fresh on every call. The same literal pasted into a second test is the cue.
 
 ### Basic Pattern
 
 ```typescript
+import { UserSchema } from '@/schemas/user'; // Import the real schema, never redefine it
+
 const getMockUser = (overrides?: Partial<User>): User => {
   return UserSchema.parse({
     id: 'user-123',
@@ -201,30 +184,11 @@ const getMockUser = (overrides?: Partial<User>): User => {
   });
 };
 
-// Usage
-it('creates user with custom email', () => {
-  const user = getMockUser({ email: 'custom@example.com' });
-  const result = createUser(user);
-  expect(result.success).toBe(true);
+// Usage: the override is the claim
+it('lowercases the email', () => {
+  const user = createUser(getMockUser({ email: 'Ann@Example.com' }));
+  expect(user.email).toBe('ann@example.com');
 });
-```
-
-### Complete Factory Example
-
-```typescript
-import { UserSchema } from '@/schemas'; // Import real schema
-
-const getMockUser = (overrides?: Partial<User>): User => {
-  return UserSchema.parse({
-    id: 'user-123',
-    name: 'Test User',
-    email: 'test@example.com',
-    role: 'user',
-    isActive: true,
-    createdAt: new Date('2024-01-01'),
-    ...overrides,
-  });
-};
 ```
 
 **Why validate with schema?**
@@ -239,38 +203,25 @@ const getMockUser = (overrides?: Partial<User>): User => {
 For nested objects, compose factories:
 
 ```typescript
-const getMockItem = (overrides?: Partial<Item>): Item => {
-  return ItemSchema.parse({
-    id: 'item-1',
-    name: 'Test Item',
-    price: 100,
-    ...overrides,
-  });
-};
-
 const getMockOrder = (overrides?: Partial<Order>): Order => {
   return OrderSchema.parse({
     id: 'order-1',
     items: [getMockItem()],      // ✅ Compose factories
-    customer: getMockCustomer(),  // ✅ Compose factories
-    payment: getMockPayment(),    // ✅ Compose factories
+    customer: getMockCustomer(),
+    payment: getMockPayment(),
     ...overrides,
   });
 };
 
-// Usage - override nested objects
 it('calculates total with multiple items', () => {
   const order = getMockOrder({
-    items: [
-      getMockItem({ price: 100 }),
-      getMockItem({ price: 200 }),
-    ],
+    items: [getMockItem({ price: 100 }), getMockItem({ price: 200 })],
   });
   expect(calculateTotal(order)).toBe(300);
 });
 ```
 
-### Anti-Patterns
+### Anti-Pattern: Shared Mutable State
 
 ❌ **WRONG: Using `let` and `beforeEach`**
 ```typescript
@@ -288,69 +239,17 @@ it('test 2', () => {
 });
 ```
 
-✅ **CORRECT: Factory per test**
-```typescript
-it('test 1', () => {
-  const user = getMockUser({ name: 'Modified User' });  // Fresh state
-  // ...
-});
-
-it('test 2', () => {
-  const user = getMockUser();  // Fresh state, not affected by test 1
-  expect(user.name).toBe('Test User');  // ✅ Passes
-});
-```
-
-❌ **WRONG: Incomplete objects**
-```typescript
-const getMockUser = () => ({
-  id: 'user-123',  // Missing name, email, role!
-});
-```
-
-✅ **CORRECT: Complete objects**
-```typescript
-const getMockUser = (overrides?: Partial<User>): User => {
-  return UserSchema.parse({
-    id: 'user-123',
-    name: 'Test User',
-    email: 'test@example.com',
-    role: 'user',
-    ...overrides,  // All required fields present
-  });
-};
-```
-
-❌ **WRONG: Redefining schemas in tests**
-```typescript
-// ❌ Schema already defined in src/schemas/user.ts!
-const UserSchema = z.object({ ... });
-const getMockUser = () => UserSchema.parse({ ... });
-```
-
-✅ **CORRECT: Import real schema**
-```typescript
-import { UserSchema } from '@/schemas/user';
-
-const getMockUser = (overrides?: Partial<User>): User => {
-  return UserSchema.parse({
-    id: 'user-123',
-    name: 'Test User',
-    email: 'test@example.com',
-    ...overrides,
-  });
-};
-```
+✅ **CORRECT:** each test calls `getMockUser(...)` for its own fresh object.
 
 ---
 
 ## Coverage Theater Detection
 
-Watch for these patterns that give fake 100% coverage:
+Watch for these patterns that execute code without checking it:
 
 ### Pattern 1: Mock the function being tested
 
-❌ **WRONG** - Gives 100% coverage but tests nothing:
+❌ **WRONG** - Executes the code but tests nothing:
 ```typescript
 it('calls validator', () => {
   const spy = jest.spyOn(validator, 'validate');
@@ -359,15 +258,7 @@ it('calls validator', () => {
 });
 ```
 
-✅ **CORRECT** - Test actual behavior:
-```typescript
-it('should reject invalid payment', () => {
-  const payment = getMockPayment({ amount: -100 });
-  const result = validate(payment);
-  expect(result.success).toBe(false);
-  expect(result.error).toContain('Amount must be positive');
-});
-```
+✅ **CORRECT** - Assert what `validate` returns for an input that matters.
 
 ### Pattern 2: Test only that function was called
 
@@ -382,70 +273,17 @@ it('processes payment', () => {
 
 ✅ **CORRECT** - Verify the outcome:
 ```typescript
-it('should process payment and return transaction ID', () => {
-  const payment = getMockPayment();
-  const result = handlePayment(payment);
-  expect(result.success).toBe(true);
-  expect(result.transactionId).toBeDefined();
+it('returns a transaction id for a processed payment', () => {
+  const result = handlePayment(getMockPayment());
+  expect(result).toEqual({ success: true, transactionId: 'txn-1' });
 });
 ```
 
-### Pattern 3: Test trivial getters/setters
+### Pattern 3: Only the happy path
 
-❌ **WRONG** - Testing implementation, not behavior:
-```typescript
-it('sets amount', () => {
-  payment.setAmount(100);
-  expect(payment.getAmount()).toBe(100); // Trivial
-});
-```
+One test of the happy path leaves every rejecting branch unchecked. Give each branch one case — see "One Test per Branch, Not per Input" for the table.
 
-✅ **CORRECT** - Test meaningful behavior:
-```typescript
-it('should calculate total with tax', () => {
-  const order = createOrder({ items: [item1, item2] });
-  const total = order.calculateTotal();
-  expect(total).toBe(230); // 200 + 15% tax
-});
-```
-
-### Pattern 4: 100% line coverage, 0% branch coverage
-
-❌ **WRONG** - Missing edge cases:
-```typescript
-it('validates payment', () => {
-  const result = validate(getMockPayment());
-  expect(result.success).toBe(true); // Only happy path!
-});
-// Missing: negative amounts, invalid CVV, missing fields, etc.
-```
-
-✅ **CORRECT** - Test all branches:
-```typescript
-describe('validate payment', () => {
-  it('should reject negative amounts', () => {
-    const payment = getMockPayment({ amount: -100 });
-    expect(validate(payment).success).toBe(false);
-  });
-
-  it('should reject amounts over limit', () => {
-    const payment = getMockPayment({ amount: 15000 });
-    expect(validate(payment).success).toBe(false);
-  });
-
-  it('should reject invalid CVV', () => {
-    const payment = getMockPayment({ cvv: '12' });
-    expect(validate(payment).success).toBe(false);
-  });
-
-  it('should accept valid payments', () => {
-    const payment = getMockPayment();
-    expect(validate(payment).success).toBe(true);
-  });
-});
-```
-
-### Pattern 5: Tautological expected value
+### Pattern 4: Tautological expected value
 
 The expected value is computed the way the code computes it, so the test passes by construction and can never disagree with the code.
 
@@ -503,13 +341,13 @@ tests/
 
 When writing tests, verify:
 
-- [ ] Testing behavior through public API (not implementation details)
+- [ ] Each test names a break that no other test catches
+- [ ] Testing behavior through public API (not implementation details, private methods or internal state)
 - [ ] No mocks of the function being tested
-- [ ] No tests of private methods or internal state
-- [ ] Factory functions return complete, valid objects
-- [ ] Factories validate with real schemas (not redefined in tests)
-- [ ] Using Partial<T> for type-safe overrides
-- [ ] No `let`/`beforeEach` - use factories for fresh state
-- [ ] Edge cases covered (not just happy path)
+- [ ] No tests of framework guarantees, trivial code, type-checked inputs, or appearance
+- [ ] One case per branch; inputs down the same branch share one table test; a threshold has a case on it and one just past it
+- [ ] Each rule asserted at the one layer that owns it
+- [ ] Test bodies pass only the overrides their assertions read; complete factories, validated by real schemas, hold the rest
+- [ ] Fresh state per test (no `let`/`beforeEach`)
 - [ ] Tests would pass even if implementation is refactored
 - [ ] No 1:1 mapping between test files and implementation files

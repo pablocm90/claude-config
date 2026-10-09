@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# context-reminder: UserPromptSubmit hook. Once a session's context passes
+# 200k tokens, every call re-reads all of it, so remind Claude (and the human)
+# to hand off and cycle at the next stride boundary. Never blocks the prompt.
+set -uo pipefail
+
+THRESHOLD=200000
+
+transcript=$(jq -r '.transcript_path // empty' 2>/dev/null)
+[ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
+
+tokens=$(
+  tac "$transcript" \
+    | jq -R 'fromjson? | select(.type == "assistant" and .message.usage != null) | .message.usage
+             | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' 2>/dev/null \
+    | head -n 1
+)
+[ -n "$tokens" ] && [ "$tokens" -ge "$THRESHOLD" ] 2>/dev/null || exit 0
+
+k=$((tokens / 1000))
+jq -cn --arg k "$k" '{
+  systemMessage: ("Context at " + $k + "k tokens: time to hand off and cycle."),
+  hookSpecificOutput: {
+    hookEventName: "UserPromptSubmit",
+    additionalContext: ("This session is at " + $k + "k tokens of context, and every call re-reads all of it. Finish the current stride, then run the handoff skill and propose claude-dev cycle before starting new work.")
+  }
+}'

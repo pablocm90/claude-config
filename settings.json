@@ -1,4 +1,32 @@
 {
+  "cleanupPeriodDays": 365,
+  "permissions": {
+    "allow": [],
+    "defaultMode": "auto"
+  },
+  "skillOverrides": {
+    "accessibility": "off",
+    "diagrams": "off",
+    "find-skills": "off",
+    "rails-performance": "off"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/bin/statusline"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/bin/context-reminder",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": false,
     "ruby-lsp@claude-plugins-official": false,
@@ -7,24 +35,16 @@
     "security-guidance@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": true
   },
-  "skillOverrides": {
-    "accessibility": "off",
-    "diagrams": "off",
-    "find-skills": "off",
-    "rails-performance": "off"
-  },
-  "permissions": {
-    "defaultMode": "auto",
-    "allow": []
+  "feedbackDrafts": "off",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
   },
   "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
   "theme": "dark-daltonized",
   "preferredNotifChannel": "terminal_bell",
   "agentPushNotifEnabled": true,
-  "skipAutoPermissionPrompt": true,
-  "skipWorkflowUsageWarning": true,
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/bin/statusline"
-  }
+  "skipAutoPermissionPrompt": true
 }

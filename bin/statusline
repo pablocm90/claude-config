@@ -58,13 +58,17 @@ fi
 
 input=$(cat)
 
-IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx model effort thinking dir branch pr transcript <<<"$(
+IFS=$'\t' read -r fh_pct fh_reset sd_pct sd_reset ctx ctx_tokens model effort thinking dir branch pr transcript <<<"$(
   printf '%s' "$input" | jq -r '
     [ (.rate_limits.five_hour.used_percentage // "-"),
       (.rate_limits.five_hour.resets_at       // "-"),
       (.rate_limits.seven_day.used_percentage // "-"),
       (.rate_limits.seven_day.resets_at       // "-"),
       (.context_window.used_percentage        // "-"),
+      (.context_window.current_usage
+         | if . == null then "-"
+           else (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)
+           end),
       (.model.display_name // "-" | sub(" +\\(.*\\)$"; "")),
       (.effort.level                          // "-"),
       (if .thinking.enabled then "think" else "-" end),
@@ -90,6 +94,9 @@ band() { # value low mid high
 }
 
 hue() { printf '\033[%sm' "${RAMP[$(band "${1%%.*}" 40 70 90)]}"; }
+
+# Context by what it costs: every call re-reads it, so the bands are tokens.
+token_hue() { printf '\033[%sm' "${RAMP[$(band "$1" 100000 150000 200000)]}"; }
 
 # 5-cell bar so the number has a shape next to it.
 bar() {
@@ -175,7 +182,9 @@ for name in $SEGMENTS; do
     5h) w=$(window 5h "$fh_pct" "$fh_reset"); [ -n "$w" ] && seg+=("$w") ;;
     7d) w=$(window 7d "$sd_pct" "$sd_reset"); [ -n "$w" ] && seg+=("$w") ;;
     ctx)
-      if [ "$ctx" != "-" ]; then
+      if [ "$ctx_tokens" != "-" ]; then
+        seg+=("$(printf '%sctx%s %s%sk%s' "$DIM" "$RESET" "$(token_hue "$ctx_tokens")" "$((ctx_tokens / 1000))" "$RESET")")
+      elif [ "$ctx" != "-" ]; then
         p=${ctx%%.*}
         seg+=("$(printf '%sctx%s %s%s%%%s' "$DIM" "$RESET" "$(hue "$p")" "$p" "$RESET")")
       fi ;;

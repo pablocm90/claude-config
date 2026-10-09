@@ -121,7 +121,7 @@ A stride is not a deploy. Three loops run at different frequencies, and the huma
 
 **Merging is manual and human-only.** Green CI does not authorize a merge; the human clicking merge IS the deploy gate. Never run `gh pr merge` (including `--auto`) unprompted.
 
-**After a merge/deploy — or whenever the session has grown long — cycle the session** (`handoff` skill): flush durables to memory/plan/PR, write the task handoff, and let the human restart the pane with `claude-dev cycle`. A fresh session with a tight handoff beats a long session with stale context.
+**After a merge/deploy, or once the session's context passes 150k tokens, cycle at the next stride boundary** (`handoff` skill): flush durables to memory/plan/PR, write the task handoff, and let the human restart the pane with `claude-dev cycle`. Past 200k the handoff *is* the next stride: every call re-reads the whole conversation, and re-reading is most of what a session costs. The status line shows context in tokens, and a prompt hook adds a reminder once a session passes 200k.
 
 - **Never `--no-verify`.** Repo-level hooks exist for a reason. If a hook fails, fix the underlying issue or stop and ask the human. Bypassing is not on the menu.
 - **The stride boundary is the commit-approval point.** Commit each green stride directly, then run `claude-dev ready --note`; review and steering happen post-commit in the auto-popped terminal review, not in a pre-commit approval beat. Stage deliberately — never blind `git commit -a`.

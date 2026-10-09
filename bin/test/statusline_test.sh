@@ -135,6 +135,33 @@ conf 'segments ctx\nramp black red green yellow\n'
 assert_eq "with nothing ignored, it says nothing about it" \
   "$(explain | grep -c '^ignored')" "0"
 
+# --- context in tokens -------------------------------------------------------
+# What a call costs follows how many tokens it re-reads, not how full a 1M
+# window is: at 200k the window reads 20% while every call is already dear.
+# So once Claude Code reports the current usage, ctx shows tokens, coloured
+# on the same ramp by cost bands: 100k / 150k / 200k.
+tokens_at() {
+  HOME="$home" bash "$SL" <<<"$(jq -cn --argjson n "$1" '{
+    model: { display_name: "Opus 5" },
+    context_window: { used_percentage: 20,
+      current_usage: { input_tokens: 1000, cache_creation_input_tokens: 9000,
+                       cache_read_input_tokens: ($n - 10000), output_tokens: 500 } }
+  }')"
+}
+conf 'segments ctx\n'
+assert_eq "context reads in tokens once Claude Code reports them" \
+  "$(tokens_at 212000 | sed 's/\x1b\[[0-9;]*m//g')" "ctx 212k"
+
+tokens_hue_is() {
+  assert_contains "colours $1 tokens $3" "$(tokens_at "$1")" "$(printf "\033[%sm%sk" "$2" "$(( $1 / 1000 ))")"
+}
+tokens_hue_is 99999 34 blue
+tokens_hue_is 100000 36 cyan
+tokens_hue_is 149999 36 cyan
+tokens_hue_is 150000 33 yellow
+tokens_hue_is 199999 33 yellow
+tokens_hue_is 200000 35 magenta
+
 rm -rf "$tmp"
 [ "$fails" -eq 0 ] && echo "statusline: all assertions passed"
 exit "$fails"

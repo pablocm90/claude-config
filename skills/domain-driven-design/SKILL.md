@@ -14,12 +14,12 @@ For Rust (newtypes, enums, private fields) read [resources/rust.md](resources/ru
 1. **State the invariants**: each thing that must always be true, as one sentence in glossary words ("an account's email is unique within the system", "an order's total is the sum of its lines"). Done when every rule the change touches is written down.
 2. **Value object or entity.** If two instances with the same attributes are interchangeable, it is a **value object**: immutable, compared by value (`EmailAddress`, `Money`, `DateRange`). If it keeps an identity while its attributes change, it is an **entity** (`Account`, `Order`). Done when each concept is one or the other.
 3. **Make illegal states unrepresentable.** Every value object has one constructor that parses raw input and returns a result: valid value or a domain error. Lifecycle states are a union with one shape per state, so a `Draft` order has no `shippedAt` field to forget. Done when no code path outside the module can build an invalid instance.
-4. **Draw the aggregate.** An **aggregate** is the smallest cluster of entities and values that must be consistent at the end of one transaction; its root is the only entry point. Done when every invariant from step 1 is enforced inside exactly one aggregate, and invariants that span aggregates are named as eventually consistent or moved into a domain service.
+4. **Draw the aggregate.** An **aggregate** is the smallest cluster of entities and values that must be consistent at the end of one transaction; its root is the only entry point. Done when every invariant from step 1 has exactly one enforcer: one aggregate; or, for a rule over a whole set (uniqueness), a constraint behind the repository port that surfaces as a domain error; or, for a rule spanning aggregates that may lag, a named eventually consistent process.
 5. **Place each rule** with the table below. Done when every rule sits at the lowest row that can hold it.
 
 ## Where code belongs
 
-| Code | Belongs in | Test |
+| Code | Belongs in | Ask |
 |---|---|---|
 | A rule about one value (format, range) | Value object constructor | Can it be decided from that value alone? |
 | A rule about one aggregate's consistency | Aggregate (functions on its type) | Does it need only the aggregate's own state? |

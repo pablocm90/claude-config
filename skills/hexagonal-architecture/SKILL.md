@@ -27,9 +27,9 @@ Hexagonal says nothing about how the inside is modelled; for that, load `domain-
 
 Follow `tdd` throughout; these steps give the shape the tests drive towards.
 
-1. **Name the use case** in domain words, as a function from a command to a result. Done when its input, output and error types hold only domain or plain types: no request object, status code, row or driver error.
-2. **Name each driven port by purpose**: `ForStoringOrders`, `ForNotifyingCustomers`, `ForReadingTheClock`, not `OrderRepositoryPostgres`. Done when every method takes and returns domain types, and an in-memory fake of the port fits in a few lines.
-3. **Test the use case through its driving port** with fakes plugged into the driven ports. Done when the behaviour is pinned without a database, network or framework running.
+1. **Write the use case's test first**, calling it through its driving port. The test names the use case in domain words, as a function from a command to a result. Done when the test is red and the use case's input, output and error types hold only domain or plain types: no request object, status code, row or driver error.
+2. **Name each driven port the test needs by purpose**: `ForStoringOrders`, `ForNotifyingCustomers`, `ForReadingTheClock`, not `OrderRepositoryPostgres`, and plug an in-memory fake into it. Done when every method takes and returns domain types, and each fake fits in a few lines.
+3. **Make the use case pass** against the fakes. Done when the test is green without a database, network or framework running.
 4. **Write the real adapter** against a contract suite shared with the fake (see *Testing*). Done when both pass the same suite.
 5. **Keep the adapter dumb**: it parses, maps and translates errors, nothing else. Done when no branch in it decides a business rule.
 6. **Wire it at the composition root**. Done when a search for the adapter's name finds it only in the root and its own tests.
@@ -39,6 +39,7 @@ Follow `tdd` throughout; these steps give the shape the tests drive towards.
 - **Owned by the inside**: the port lives with the use cases, in their language. An adapter that forces its shape onto the port (`query(sql)`, ORM entities, `Response`) has turned the dependency around.
 - **Few, by purpose**: a hexagon usually has a handful of ports, grouped by the conversation they serve. One port per table or per class is an ORM wearing a hexagon.
 - **Domain errors out**: a driven port reports `OrderNotFound`, not `RowNotFound` or a status code. The adapter maps.
+- **One driven-port call is one transaction**, owned by the adapter. When a use case needs two writes to succeed or fail together, that is one port method taking both, or the aggregate is drawn wrong (`domain-driven-design`, *Aggregate rules*).
 - **Time, randomness and ids are driven ports too**, or plain values passed in. A use case that reads the system clock cannot be tested deterministically.
 
 ## Dependency injection
@@ -94,7 +95,7 @@ A write goes through the use case and the domain model so invariants hold. A rea
 
 ## Enforcing the dependency rule
 
-The rule has a fixed shape, so check it with tooling rather than review: crate dependencies in Rust (`cargo tree`, and a workspace layout where the core crates cannot name adapter crates), `dependency-cruiser` or ESLint `no-restricted-imports` in TypeScript. A violation the build rejects never needs a reviewer to spot it.
+The rule has a fixed shape, so check it with tooling rather than review: the crate graph in Rust (see `resources/rust.md`), `dependency-cruiser` or ESLint `no-restricted-imports` in TypeScript.
 
 ## When it is overhead
 
@@ -102,4 +103,4 @@ A thin CRUD service with no rules of its own, a one-off script, or a spike gains
 
 ## Done when
 
-Every new use case is tested through its driving port with fakes, every new driven port has a contract suite run against both fake and real adapter, no core type names an infrastructure type, and the composition root is the only code that names concrete adapters.
+Every new use case is tested through its driving port with fakes, every driven port with a real adapter has a contract suite run against both the fake and that adapter, no core type names an infrastructure type, and the composition root is the only code that names concrete adapters.

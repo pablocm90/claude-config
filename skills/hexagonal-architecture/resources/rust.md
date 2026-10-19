@@ -19,7 +19,13 @@ postgres-adapter  application, diesel/sqlx        driven
 
 ```rust
 pub trait ForStoringAccounts {
-    fn create(&self, account: NewAccount) -> impl Future<Output = Result<(), EmailTaken>> + Send;
+    fn create(&self, account: NewAccount) -> impl Future<Output = Result<(), CreateAccountError>> + Send;
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CreateAccountError {
+    EmailTaken,
+    Unavailable,
 }
 
 pub struct SignUp<A: ForStoringAccounts, H: ForHashingPasswords> {
@@ -29,7 +35,7 @@ pub struct SignUp<A: ForStoringAccounts, H: ForHashingPasswords> {
 ```
 
 - **Generics by default.** Native `async fn` / `impl Future` in traits (stable since 1.75) works with generic parameters and costs nothing at runtime, but those traits are not dyn-compatible. Reach for `Box<dyn …>` (with `async-trait` or boxed futures) only when the adapter must be chosen at runtime from config.
-- **Errors are domain enums**, not `Box<dyn Error>` or a driver error. The adapter maps `diesel::result::Error::DatabaseError(UniqueViolation, _)` to `EmailTaken`; anything it cannot map becomes an opaque `Unavailable` variant, logged in the adapter. A boxed error lets driver text cross into the core and out through driving adapters.
+- **Errors are domain enums**, not `Box<dyn Error>` or a driver error. The adapter maps `diesel::result::Error::DatabaseError(UniqueViolation, _)` to `CreateAccountError::EmailTaken`; anything it cannot map becomes `Unavailable`, with the detail logged in the adapter. A boxed error lets driver text cross into the core and out through driving adapters.
 - **Name by purpose**: a port called `DatabaseHealth` names the technology. Ask what the app needs (`ForCheckingReadiness`) and let the database be one answer.
 
 ## Fakes and contract tests
@@ -44,7 +50,10 @@ An inline `#[cfg(test)]` fake is invisible to other crates, so the real adapter'
 pub async fn stores_accounts<A: ForStoringAccounts>(make: impl AsyncFn() -> A) {
     let accounts = make().await;
     accounts.create(an_account("a@example.com")).await.unwrap();
-    assert_eq!(accounts.create(an_account("a@example.com")).await, Err(EmailTaken));
+    assert_eq!(
+        accounts.create(an_account("a@example.com")).await,
+        Err(CreateAccountError::EmailTaken),
+    );
 }
 
 // postgres-adapter/tests/accounts.rs
@@ -58,7 +67,7 @@ Run each contract test in its own rolled-back transaction or fresh schema so the
 
 ## Driving adapters
 
-A driving adapter owns all of its framework: argument parsing (clap) lives in the CLI adapter, request extraction and status codes in the HTTP adapter. The binary only builds adapters and hands them over. Framework types (`axum::http::HeaderValue`, `clap::ArgMatches`) stay in the adapter's internals rather than its public signature, so the composition root passes plain configuration values.
+A driving adapter owns all of its framework: argument parsing (clap) lives in the CLI adapter, request extraction and status codes in the HTTP adapter. The binary only builds adapters and hands them over. What the root passes in is use cases and plain configuration values (a `String` origin, not an `axum::http::HeaderValue`); the adapter parses them. What the adapter hands back may be its framework's runnable, such as an `axum::Router` for the root to serve.
 
 ## The composition root
 

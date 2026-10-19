@@ -99,8 +99,9 @@ Before planning, exploring, or writing a single line of code or test, classify t
 | Writing a skill, agent or CLAUDE.md | `writing-for-agents` |
 | Modifying untested legacy code | `characterisation-tests`, `finding-seams`, then `tdd`, `testing` |
 | API endpoint design/changes | `api-design`, then `tdd`, `testing`, `mutation-testing` |
+| Use case, port or adapter; business rule or domain type | `hexagonal-architecture`, `domain-driven-design`, then `tdd`, `testing`, `mutation-testing` |
 
-Skills are generic; when a skill has a `resources/rails.md` or `resources/typescript.md`, also read the one matching the current repo's stack. If the nature of the work changes mid-task, load the additional skills at that point before continuing.
+Skills are generic; when a skill has a `resources/rails.md`, `resources/typescript.md` or `resources/rust.md`, also read the one matching the current repo's stack. If the nature of the work changes mid-task, load the additional skills at that point before continuing.
 
 See **Skill Map** below for the full index.
 
@@ -144,6 +145,8 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 |---|---|
 | `api-design` | REST endpoints, module boundaries, prop interfaces, any public contract. |
 | `architecture-survey` | Survey the code that changes most for shallow modules and report deepening candidates; explore the one the human picks. Vocabulary: `refactoring`'s `resources/deep-modules.md`. |
+| `hexagonal-architecture` | Ports and adapters: use cases, driven ports, adapters, composition root, contract tests for fakes, the inward dependency rule. |
+| `domain-driven-design` | Value objects, entities, aggregates, domain services: where a business rule lives and how invariants always hold. Glossary work stays in `domain-modeling`. |
 | `typescript-strict` | Defining types/schemas, reviewing type safety, strict-mode flags. |
 | `functional` | Logic / data transforms / mutation bugs. Don't over-apply heavy FP. |
 | `oop` | Ruby/Rails OOP — SOLID, encapsulation, ActiveRecord, service/value objects, DI. Ruby codebases only; don't apply to functional TS. |

@@ -4,6 +4,7 @@
 #   claude-dev [--fresh] [folder]        hub session: claude | PR/CI status pane
 #   claude-dev task <slug> [repo ...]    add a task window: claude | shell per worktree
 #                                        on a worktree <repo>/.claude/worktrees/<slug>
+#                                        (Claude starts with Remote Control on)
 #   claude-dev done <slug>               remove task worktree(s) + window (refuses if dirty)
 #   claude-dev reset [slug]              after its PR merges, restart the task's worktree(s)
 #                                        from the default branch (refuses if dirty
@@ -175,6 +176,13 @@ cmd_hub() {
   exec tmux attach -t "$session"
 }
 
+# A task's Claude session is reachable from claude.ai and the mobile app under
+# the task's name. The name is passed explicitly: --remote-control takes an
+# optional one, and would otherwise swallow cycle's prompt as the name.
+task_claude() {
+  printf '%s --remote-control %q' "$CLAUDE_CMD" "$1"
+}
+
 cmd_task() {
   local slug="" branch="" frags=() arg
   while [ $# -gt 0 ]; do
@@ -222,8 +230,8 @@ cmd_task() {
 
   # Existing worktrees = resumed task: open the conversation picker so the
   # task's previous Claude session can be picked up where it left off.
-  local claude_launch="$CLAUDE_CMD"
-  if [ "$resumed" -eq 1 ]; then claude_launch="$CLAUDE_CMD --resume"; fi
+  local claude_launch; claude_launch=$(task_claude "$window")
+  if [ "$resumed" -eq 1 ]; then claude_launch="$claude_launch --resume"; fi
 
   # Right column: a plain shell per worktree (cd'd in via -c), each ready for
   # tests/standardrb/git by hand. lazygit stays one keystroke away — just type
@@ -348,7 +356,7 @@ cmd_cycle() {
   # One tmux invocation: respawn kills this script too when run from the
   # target pane, so send-keys must already be queued server-side.
   tmux respawn-pane -k -t "$session:$window.1" -c "$root" \; \
-    send-keys -t "$session:$window.1" "$CLAUDE_CMD $(printf '%q' "$prompt")" C-m
+    send-keys -t "$session:$window.1" "$(task_claude "$window") $(printf '%q' "$prompt")" C-m
   echo "cycled: fresh session in $session:$window"
 }
 

@@ -167,25 +167,35 @@ interface UserService {
 
 ## Branded Types
 
-For type-safe primitives:
+For type-safe primitives. A brand is only worth having if a value can get one solely by passing its check, so every branded value comes from one constructor. Call sites, tests and factories included, never write `as UserId`.
+
+At a trust boundary, let the schema brand it: no assertion anywhere.
 
 ```typescript
-type UserId = string & { readonly brand: unique symbol };
-type PaymentAmount = number & { readonly brand: unique symbol };
+const UserIdSchema = z.string().uuid().brand<"UserId">();
+type UserId = z.infer<typeof UserIdSchema>;
 
-// Type-safe at compile time
+const userId = UserIdSchema.parse(request.params.id);
+```
+
+For a domain rule, a parse function is the constructor, and the one assertion lives inside it, justified by the check before it:
+
+```typescript
+type PaymentAmount = number & { readonly __brand: "PaymentAmount" };
+
+const parsePaymentAmount = (cents: number): Result<PaymentAmount, InvalidAmount> =>
+  Number.isInteger(cents) && cents > 0
+    ? { success: true, data: cents as PaymentAmount }
+    : { success: false, error: { kind: "invalid-amount", cents } };
+
 const processPayment = (userId: UserId, amount: PaymentAmount) => {
   // Implementation
 };
 
-// ❌ Can't pass raw string/number
-processPayment('user-123', 100); // Error
-
-// ✅ Must use branded type
-const userId = 'user-123' as UserId;
-const amount = 100 as PaymentAmount;
-processPayment(userId, amount); // OK
+processPayment("user-123", 100); // ❌ Error: raw string and number have no brand
 ```
+
+Test factories build branded values through the same constructor (`UserIdSchema.parse(...)`, `parsePaymentAmount(...)`), so test data passes the same check as production data. For value objects in a domain model, see `domain-driven-design`.
 
 ---
 

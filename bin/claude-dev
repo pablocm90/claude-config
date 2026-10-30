@@ -66,11 +66,17 @@ hoist_root() {
   if [ -f "$parent/CLAUDE.md" ]; then printf '%s' "$parent"; else printf '%s' "$start"; fi
 }
 
-resolve_root() {
+# The root claude-dev recorded for this tmux session; empty in any other.
+recorded_root() {
   local root="${CLAUDE_DEV_ROOT:-}"
   if [ -z "$root" ] && [ -n "${TMUX:-}" ]; then
     root=$(tmux show-environment CLAUDE_DEV_ROOT 2>/dev/null | cut -d= -f2- || true)
   fi
+  printf '%s' "$root"
+}
+
+resolve_root() {
+  local root; root=$(recorded_root)
   printf '%s' "${root:-$(hoist_root "$PWD")}"
 }
 
@@ -352,9 +358,11 @@ cmd_prune() {
 }
 
 cmd_mode() {
-  local window; window=$(current_window || true)
-  [ -n "$window" ] && [ "$window" != hub ] || die "not in a task window"
-  if [ -f "$(stride_marker "$(resolve_root)" "$window")" ]; then
+  local window root
+  window=$(current_window || true)
+  root=$(recorded_root)
+  [ -n "$window" ] && [ "$window" != hub ] && [ -n "$root" ] || die "not in a task window"
+  if [ -f "$(stride_marker "$root" "$window")" ]; then
     echo stride
   else
     echo until-pr

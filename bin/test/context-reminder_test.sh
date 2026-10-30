@@ -26,6 +26,7 @@ cat > "$bin/tmux" <<'FAKE'
 #!/usr/bin/env bash
 case "$*" in
   "display-message -p -t %1 #W") printf '%s\n' "$FAKE_WINDOW" ;;
+  "show-environment CLAUDE_DEV_ROOT") [ -z "${FAKE_ROOT:-}" ] || printf 'CLAUDE_DEV_ROOT=%s\n' "$FAKE_ROOT" ;;
 esac
 exit 0
 FAKE
@@ -93,6 +94,13 @@ assert_contains "at 200k an until-pr task is told to cycle by itself" \
   "$(before_prompt task1 "$(transcript_at prompt-until 200000)")" "run claude-dev cycle yourself"
 assert_contains "and a stride task to propose it" \
   "$(before_prompt strided "$(transcript_at prompt-stride 200000)")" "propose claude-dev cycle"
+assert_eq "nor is a window in a tmux session claude-dev did not start" \
+  "$(jq -cn --arg tx "$(transcript_at plain160 160000)" '{hook_event_name: "PostToolUse", session_id: "plain", transcript_path: $tx}' \
+     | (cd "$ws" && env -u CLAUDE_DEV_ROOT PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW=zsh XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK"))" ""
+assert_contains "while a task whose root only tmux knows is reminded" \
+  "$(jq -cn --arg tx "$(transcript_at tmuxroot160 160000)" '{hook_event_name: "PostToolUse", session_id: "tmuxroot", transcript_path: $tx}' \
+     | env -u CLAUDE_DEV_ROOT PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW=task1 FAKE_ROOT="$ws" XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK")" \
+  "run claude-dev cycle yourself"
 
 assert_eq "a missing transcript is silent" "$(run "$tmp/none.jsonl")" ""
 assert_eq "and so is a session with no calls yet" \

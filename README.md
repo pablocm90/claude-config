@@ -186,6 +186,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 | `claude-dev ready [slug] [--note <text>]` | signal a green stride; flags it and pops its review |
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |
+| `claude-dev mode` | this task window's rhythm, `until-pr` or `stride`; the context reminder asks it before telling an until-pr run to cycle itself past 150k |
 | `claude-dev ls` | task windows and worktrees |
 | `claude-dev doctor` | check the workspace against the conventions the rest of the tool assumes; exits on the number of findings |
 | `claude-dev done <slug>` | remove the window and worktree; refuses if dirty |

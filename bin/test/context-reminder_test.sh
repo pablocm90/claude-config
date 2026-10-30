@@ -68,6 +68,10 @@ assert_eq "an until-pr task at 150k is reminded after a tool call" \
 assert_contains "to cycle at the next green commit by itself" \
   "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$tool_line")" "run claude-dev cycle yourself"
 
+mkdir -p "$ws/.claude/handoffs"; touch "$ws/.claude/handoffs/strided.stride"
+assert_eq "a stride task past 150k is left to the prompt reminder" \
+  "$(after_tool strided "$(transcript_at stride160 160000)")" ""
+
 assert_eq "a missing transcript is silent" "$(run "$tmp/none.jsonl")" ""
 assert_eq "and so is a session with no calls yet" \
   "$(printf '%s\n' '{"type":"user","message":{"content":"hi"}}' > "$tmp/new.jsonl"; run "$tmp/new.jsonl")" ""

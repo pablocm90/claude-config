@@ -22,6 +22,7 @@ threshold=200000
 
 k=$((tokens / 1000))
 if [ "$event" = PostToolUse ]; then
+  [ "$("$(dirname "$0")/claude-dev" mode 2>/dev/null)" = until-pr ] || exit 0
   jq -cn --arg k "$k" '{
     systemMessage: ("Context at " + $k + "k tokens: cycling at the next green commit."),
     hookSpecificOutput: {

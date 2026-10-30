@@ -22,6 +22,7 @@
 #   claude-dev serve-cmd [path]          what serve would start there, and why it
 #                                        would fail if nothing is configured
 #   claude-dev serve-ports               the ports a served task takes over
+#   claude-dev mode                      this task window's rhythm: until-pr or stride
 #   claude-dev ls                        list task windows and worktrees
 #   claude-dev doctor                    check this workspace against the
 #                                        conventions claude-dev assumes
@@ -348,6 +349,14 @@ cmd_prune() {
     repo="${wt%/.claude/worktrees/*}"
     git -C "$repo" worktree remove "$wt" && echo "removed: $wt"
   done
+}
+
+cmd_mode() {
+  if [ -f "$(stride_marker "$(resolve_root)" "$(current_window || true)")" ]; then
+    echo stride
+  else
+    echo until-pr
+  fi
 }
 
 cmd_cycle() {
@@ -763,6 +772,7 @@ case "${1:-}" in
   reset)  shift; cmd_reset "$@" ;;
   prune)  shift; cmd_prune "$@" ;;
   cycle)  shift; cmd_cycle "$@" ;;
+  mode)   shift; cmd_mode "$@" ;;
   ready)  shift; cmd_ready "$@" ;;
   pop-review) shift; cmd_pop_review "$@" ;;
   review-popup) shift; cmd_review_popup "$@" ;;

@@ -57,6 +57,7 @@ cat > "$fake_dir/tmux" <<'FAKE'
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 case "$1" in
   list-clients) printf '%s\n' "$FAKE_TMUX_CLIENTS" ;;
+  display-message) [ "$2" = -p ] && printf '%s\n' "${FAKE_TMUX_WINDOW:-}" ;;
   show-environment) exit 1 ;;
 esac
 exit 0
@@ -196,6 +197,13 @@ if grep -q 'xdg-open' "$log" || ! grep -q 'display-popup' "$log"; then
   echo "FAIL: a later plain stride gets the popup, not the stale page — got: $(cat "$log")"
   fails=$((fails + 1))
 fi
+
+# Finishing while the human watches the task window: no switch is coming, so
+# the page opens straight away.
+: > "$log"
+(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --pr 43 --page "$page") > /dev/null
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: finishing on the task window opens the page at once — got: $(cat "$log")"; fails=$((fails + 1)); }
 
 rm -rf "$fake_dir" "$ws_parent"
 

@@ -349,7 +349,7 @@ cmd_cycle() {
 
   local hf="$root/.claude/handoffs/$window.md" prompt
   if [ -f "$hf" ]; then
-    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then give a one-line status plus the handoff's proposed next stride, and wait."
+    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then load the until-pr skill and carry on from the handoff's next step without waiting."
   else
     prompt="Fresh session for task '$window' (no handoff file found at $hf). Inspect the task worktrees' branch state and open PRs, propose the next stride, and wait."
   fi

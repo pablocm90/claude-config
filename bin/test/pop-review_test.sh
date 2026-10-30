@@ -68,6 +68,7 @@ FAKE
 cat > "$fake_dir/notify-send" <<'FAKE'
 #!/usr/bin/env bash
 printf 'notify-send %s\n' "$*" >> "$FAKE_TMUX_LOG"
+exit 1   # as with no notification daemon running
 FAKE
 chmod +x "$fake_dir/tmux" "$fake_dir/xdg-open" "$fake_dir/notify-send"
 
@@ -162,7 +163,8 @@ both='/dev/pts/0 alpha
 page="$ws_parent/visual-review.html"
 rm -f "$ws/.claude/reviews/my-task.popped"
 : > "$log"
-fake_run "$both" ready my-task --pr 42 --page "$page" > /dev/null
+assert_status "a failed notification does not fail the finish" \
+  "$(fake_run "$both" ready my-task --pr 42 --page "$page")" 0
 # The human may be away from the terminal altogether.
 notice=$(grep -m1 '^notify-send' "$log" || true)
 case "$notice" in

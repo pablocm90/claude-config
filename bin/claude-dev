@@ -15,7 +15,8 @@
 #   claude-dev ready [slug] [--note <text>|--note -]
 #                                        signal a green stride: flag + auto-pop its
 #                                        review; the note becomes the review's
-#                                        opening context paragraph
+#                                        opening context paragraph (stride tasks
+#                                        only: until-pr refuses it)
 #   claude-dev ready [slug] --pr <n> --page <path>
 #                                        signal a finished until-pr run: desktop
 #                                        notification, then the visual review

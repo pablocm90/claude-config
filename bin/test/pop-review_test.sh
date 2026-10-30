@@ -22,6 +22,13 @@ run() { (unset TMUX TMUX_PANE; CLAUDE_DEV_ROOT="$1" bash "$CD" "${@:2}" >/dev/nu
 
 tmp=$(mktemp -d); dir="$tmp/.claude/reviews"; mkdir -p "$dir"
 
+# An until-pr window signals once, at the finish, with its visual review page.
+# A page-less signal there would pop a stride review nobody asked for.
+assert_status "an until-pr window refuses a page-less signal" "$(run "$tmp" ready my-task)" 1
+assert_no_file "a refused signal arms nothing" "$dir/my-task.ready"
+
+mkdir -p "$tmp/.claude/handoffs"; : > "$tmp/.claude/handoffs/my-task.stride"
+
 assert_status "no signalled stride — nothing to pop" "$(run "$tmp" pop-review my-task)" 1
 
 assert_status "signalling a stride succeeds" "$(run "$tmp" ready my-task)" 0
@@ -190,6 +197,7 @@ fi
 
 # A stride signalled after the run has no page of its own: the last one would
 # show a stale review.
+mkdir -p "$ws/.claude/handoffs"; : > "$ws/.claude/handoffs/my-task.stride"
 fake_run "$both" ready my-task > /dev/null
 : > "$log"
 pop "$both" > /dev/null

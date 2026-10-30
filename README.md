@@ -171,7 +171,8 @@ In strides, when a stride lands Claude calls:
 claude-dev ready --note "what this stride did and what to look at"
 ```
 
-which pops a review of **just that commit** over the window. You read it,
+which pops a review of **just that commit** over the window. An until-PR task
+refuses this signal, so its run never pops one. You read it,
 respond in the Claude pane, and the next stride starts. The note becomes the
 review's opening paragraph, so you get the author's framing before the diff.
 
@@ -194,7 +195,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 |---|---|
 | `claude-dev [--fresh] [folder]` | hub session: Claude pane + PR/CI status pane |
 | `claude-dev task <slug> [--stride] [repo…]` | task window on `<repo>/.claude/worktrees/<slug>`; repos match by fragment (`be`, `fe`). Its Claude session has Remote Control on, named after the task. The task runs `until-pr` unless made with `--stride`, and a cycled session follows that rhythm |
-| `claude-dev ready [slug] [--note <text>]` | signal a green stride; flags it and pops its review |
+| `claude-dev ready [slug] [--note <text>]` | signal a green stride; flags it and pops its review. Refused in an `until-pr` task, which signals only its finish |
 | `claude-dev ready [slug] --pr <n> --page <path>` | signal a finished `until-pr` run: a desktop notification, then the visual review page opens on the task window, at once or when you switch there |
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |

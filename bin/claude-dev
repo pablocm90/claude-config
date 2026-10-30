@@ -15,7 +15,8 @@
 #   claude-dev ready [slug] [--note <text>|--note -]
 #                                        signal a green stride: flag + auto-pop its
 #                                        review; the note becomes the review's
-#                                        opening context paragraph
+#                                        opening context paragraph (stride tasks
+#                                        only: until-pr refuses it)
 #   claude-dev ready [slug] --pr <n> --page <path>
 #                                        signal a finished until-pr run: desktop
 #                                        notification, then the visual review
@@ -446,6 +447,9 @@ cmd_ready() {
   [ -n "$slug" ] || slug=$(current_window || true)
   [ -n "$slug" ] || die "usage: claude-dev ready <slug> (or run inside the task window)"
   local window; window=$(sanitize "$slug")
+  # until-pr signals only its finish; a page-less signal would pop a stride review.
+  [ -n "$page" ] || [ -f "$(stride_marker "$root" "$window")" ] ||
+    die "'$window' runs until-pr: finish it with 'claude-dev ready --pr <n> --page <path>', or switch it to strides with 'claude-dev task $window --stride' first"
   local dir="$root/.claude/reviews"
   mkdir -p "$dir"
   : > "$dir/$window.ready"

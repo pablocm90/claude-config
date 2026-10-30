@@ -69,6 +69,13 @@ run task unhanded --stride
 assert_prompt "a task with no handoff proposes and waits, whatever its rhythm" \
   "$(cycle_prompt unhanded)" "propose the next stride, and wait"
 
+# --- --stride on an open task switches it to strides -------------------------
+run task midway
+write_handoff midway
+FAKE_WINDOWS=midway run task midway --stride
+assert_prompt "a task switched to strides mid-run waits after a cycle" \
+  "$(cycle_prompt midway)" "load the mmmss-stride skill"
+
 # --- a slug reused after `done` starts over in until-pr ----------------------
 run task reused --stride
 run done reused

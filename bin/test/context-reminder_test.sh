@@ -84,6 +84,16 @@ assert_eq "nor is a session outside tmux" \
   "$(jq -cn --arg tx "$(transcript_at bare160 160000)" '{hook_event_name: "PostToolUse", session_id: "s1", transcript_path: $tx}' \
      | env -u TMUX -u TMUX_PANE PATH="$bin:$PATH" CLAUDE_DEV_ROOT="$ws" bash "$HOOK")" ""
 
+before_prompt() {
+  jq -cn --arg tx "$2" '{hook_event_name: "UserPromptSubmit", transcript_path: $tx, prompt: "go"}' \
+    | env PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW="$1" CLAUDE_DEV_ROOT="$ws" bash "$HOOK" \
+    | jq -r '.hookSpecificOutput.additionalContext'
+}
+assert_contains "at 200k an until-pr task is told to cycle by itself" \
+  "$(before_prompt task1 "$(transcript_at prompt-until 200000)")" "run claude-dev cycle yourself"
+assert_contains "and a stride task to propose it" \
+  "$(before_prompt strided "$(transcript_at prompt-stride 200000)")" "propose claude-dev cycle"
+
 assert_eq "a missing transcript is silent" "$(run "$tmp/none.jsonl")" ""
 assert_eq "and so is a session with no calls yet" \
   "$(printf '%s\n' '{"type":"user","message":{"content":"hi"}}' > "$tmp/new.jsonl"; run "$tmp/new.jsonl")" ""

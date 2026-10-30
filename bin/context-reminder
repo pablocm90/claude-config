@@ -21,25 +21,25 @@ threshold=200000
 [ -n "$tokens" ] && [ "$tokens" -ge "$threshold" ] 2>/dev/null || exit 0
 
 k=$((tokens / 1000))
+mode=$("$(dirname "$0")/claude-dev" mode 2>/dev/null)
 if [ "$event" = PostToolUse ]; then
+  [ "$mode" = until-pr ] || exit 0
   reminded="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/claude-context-reminder/$(jq -r '.session_id' <<<"$input")"
   [ ! -e "$reminded" ] || exit 0
-  [ "$("$(dirname "$0")/claude-dev" mode 2>/dev/null)" = until-pr ] || exit 0
   mkdir -p "$(dirname "$reminded")" && touch "$reminded"
-  jq -cn --arg k "$k" '{
-    systemMessage: ("Context at " + $k + "k tokens: cycling at the next green commit."),
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext: ("This until-pr session is at " + $k + "k tokens of context. At the next green commit, run the handoff skill, then run claude-dev cycle yourself.")
-    }
-  }'
-  exit 0
 fi
 
-jq -cn --arg k "$k" '{
-  systemMessage: ("Context at " + $k + "k tokens: time to hand off and cycle."),
+if [ "$mode" = until-pr ]; then
+  you="cycling at the next green commit."
+  next="At the next green commit, run the handoff skill, then run claude-dev cycle yourself."
+else
+  you="time to hand off and cycle."
+  next="Finish the current stride, then run the handoff skill and propose claude-dev cycle before starting new work."
+fi
+jq -cn --arg event "$event" --arg k "$k" --arg you "$you" --arg next "$next" '{
+  systemMessage: ("Context at " + $k + "k tokens: " + $you),
   hookSpecificOutput: {
-    hookEventName: "UserPromptSubmit",
-    additionalContext: ("This session is at " + $k + "k tokens of context, and every call re-reads all of it. Finish the current stride, then run the handoff skill and propose claude-dev cycle before starting new work.")
+    hookEventName: $event,
+    additionalContext: ("This session is at " + $k + "k tokens of context, and every call re-reads all of it. " + $next)
   }
 }'

@@ -217,6 +217,11 @@ grep -qx "xdg-open $page" "$log" ||
 grep -q '^notify-send .*#43' "$log" ||
   { echo "FAIL: finishing on the task window still notifies the desktop — got: $(cat "$log")"; fails=$((fails + 1)); }
 
+# The window can be current with nobody attached (driven over Remote
+# Control): the page is armed for the next switch, so the signal succeeded.
+assert_status "a finish with nobody attached still signals" \
+  "$(export FAKE_TMUX_WINDOW=my-task; fake_run '/dev/pts/0 alpha' ready my-task --page "$page")" 0
+
 rm -rf "$fake_dir" "$ws_parent"
 
 [ "$fails" -eq 0 ] && echo "pop-review: all assertions passed"

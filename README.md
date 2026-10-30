@@ -118,7 +118,7 @@ the gitignored `plugins/`, so on a new machine confirm they resolved with
 | `gh`, authenticated | PR/CI status pane, `claude-dev prune` | those two commands |
 | `fuser` (psmisc) | `claude-dev serve` | serve cannot free its ports |
 | `delta` | review pager | falls back to a plain pager |
-| `xdg-open` | opening `--html` reports | report is written, not opened |
+| `xdg-open` | opening `--html` reports and a finished run's visual review page | report is written, not opened; the page stays armed |
 | `madge` | exact TypeScript graph in `--html` | falls back to grep heuristics |
 | `jq` | the statusline; `bin/install` reading and changing skill overrides | statusline prints nothing, install says so and carries on |
 

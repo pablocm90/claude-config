@@ -472,7 +472,7 @@ cmd_ready() {
   [ -n "${TMUX:-}" ] || return 0
   local session; session=$(session_for "$root")
   if [ "$(tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null)" = "$window" ]; then
-    cmd_pop_review "$window"
+    cmd_pop_review "$window" || echo "armed: opens on the next switch to '$window'"
   else
     tmux display-message -t "$session" "$what ready in '$window'" 2>/dev/null || true
   fi

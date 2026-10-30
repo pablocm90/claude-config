@@ -512,7 +512,7 @@ cmd_pop_review() {
   client=$(client_for_session "$(session_for "$root")") || return 1
   : > "$dir/$window.popped"
   if [ -f "$dir/$window.page" ]; then
-    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1 || true
+    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1
     return 0
   fi
   popup_review "$client" "$window" --stride

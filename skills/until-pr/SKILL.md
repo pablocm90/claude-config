@@ -39,14 +39,14 @@ The run is done when the done criterion you declared holds, observably.
 
 Stop, name the trigger, ask one question with your recommended answer, and wait:
 
-- **A decision is the human's**: a product, domain or architecture choice the destination does not settle, such as a new glossary term, a new port, or a change to a public contract.
+- **A decision is the human's**: a product, domain or architecture choice the destination does not settle, such as a new glossary term, a new port, or a change to a public contract; or a surviving mutant whose value is ambiguous.
 - **Stuck red**: a gate is still red after a `diagnosing-bugs` loop.
 - **Scope grows**: reaching the done criterion needs work outside the destination. Propose the split.
 - **Branch too big**: after a commit, `git diff --shortstat <base>...HEAD` shows more than 30 files *and* more than 800 changed lines. Propose how to split the PR.
 
 ## Context
 
-When a context reminder arrives, or the human asks to cycle, then at the next green commit run the `handoff` skill and then `claude-dev cycle` yourself. The handoff's next stride is the next step toward the destination.
+After a merge, once context passes 150k tokens, when a context reminder arrives, or when the human asks: at the next green commit, run the `handoff` skill, then `claude-dev cycle` yourself. The handoff's next stride is the next step toward the destination.
 
 ## Finish
 

@@ -426,11 +426,12 @@ ctx_budget_warn() {
 # a window the human is not watching only arms the flag and says so on the
 # status line; pop_review delivers it when they switch to that window.
 cmd_ready() {
-  local slug="" note="" have_note=0
+  local slug="" note="" have_note=0 page=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --note)   have_note=1; note="${2:-}"; shift 2 || shift ;;
       --note=*) have_note=1; note="${1#--note=}"; shift ;;
+      --page)   page="${2:-}"; shift 2 || shift ;;
       -*) die "usage: claude-dev ready [slug] [--note <text>|--note -]" ;;
       *)  slug="$1"; shift ;;
     esac
@@ -445,6 +446,7 @@ cmd_ready() {
   : > "$dir/$window.ready"
   # A previous review may have been popped and skipped; this is a new stride.
   rm -f "$dir/$window.popped"
+  [ -n "$page" ] && printf '%s\n' "$page" > "$dir/$window.page"
   # The context paragraph the review pane opens with. Written fresh per stride,
   # and *removed* when this stride ships without one — a note left over from the
   # previous stride would describe the wrong diff, which is worse than no note.
@@ -503,6 +505,10 @@ cmd_pop_review() {
   local client
   client=$(client_for_session "$(session_for "$root")") || return 1
   : > "$dir/$window.popped"
+  if [ -f "$dir/$window.page" ]; then
+    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1 || true
+    return 0
+  fi
   popup_review "$client" "$window" --stride
 }
 

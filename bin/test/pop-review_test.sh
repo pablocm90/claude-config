@@ -61,22 +61,29 @@ case "$1" in
 esac
 exit 0
 FAKE
-chmod +x "$fake_dir/tmux"
+cat > "$fake_dir/xdg-open" <<'FAKE'
+#!/usr/bin/env bash
+printf 'xdg-open %s\n' "$*" >> "$FAKE_TMUX_LOG"
+FAKE
+chmod +x "$fake_dir/tmux" "$fake_dir/xdg-open"
 
 # session_for() derives the tmux session from the workspace basename, so the
 # workspace must be named for the session that owns it.
 ws_parent=$(mktemp -d); ws="$ws_parent/beta"; mkdir -p "$ws/.claude/reviews"
 log="$ws_parent/tmux.log"
 
-# Two workspaces open on one tmux server, each with its own attached terminal.
-pop() {
+# claude-dev inside the workspace, with the attached clients given first.
+fake_run() {
   (
     export PATH="$fake_dir:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$log" FAKE_TMUX_CLIENTS="$1"
     unset TMUX_PANE
-    CLAUDE_DEV_ROOT="$ws" bash "$CD" pop-review my-task >/dev/null 2>&1
+    CLAUDE_DEV_ROOT="$ws" bash "$CD" "${@:2}" >/dev/null 2>&1
     echo "$?"
   )
 }
+
+# Two workspaces open on one tmux server, each with its own attached terminal.
+pop() { fake_run "$1" pop-review my-task; }
 
 : > "$ws/.claude/reviews/my-task.ready"
 : > "$log"
@@ -142,6 +149,22 @@ case "$on_demand" in
   *--stride*) echo "FAIL: an on-demand review is not narrowed to a stride — got: $on_demand"
      fails=$((fails + 1)) ;;
 esac
+# --- a finished until-PR run --------------------------------------------------
+# The visual review page is built while the human may be on another window, so
+# its opening is held back like a popup and delivered on arrival instead.
+both='/dev/pts/0 alpha
+/dev/pts/1 beta'
+page="$ws_parent/visual-review.html"
+rm -f "$ws/.claude/reviews/my-task.popped"
+fake_run "$both" ready my-task --page "$page" > /dev/null
+: > "$log"
+assert_status "a held-back page is due on arrival" "$(pop "$both")" 0
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: arriving opens the held-back page — got: $(cat "$log")"; fails=$((fails + 1)); }
+if grep -q 'display-popup' "$log"; then
+  echo "FAIL: a held-back page replaces the review popup"; fails=$((fails + 1))
+fi
+
 rm -rf "$fake_dir" "$ws_parent"
 
 [ "$fails" -eq 0 ] && echo "pop-review: all assertions passed"

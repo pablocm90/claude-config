@@ -65,7 +65,11 @@ cat > "$fake_dir/xdg-open" <<'FAKE'
 #!/usr/bin/env bash
 printf 'xdg-open %s\n' "$*" >> "$FAKE_TMUX_LOG"
 FAKE
-chmod +x "$fake_dir/tmux" "$fake_dir/xdg-open"
+cat > "$fake_dir/notify-send" <<'FAKE'
+#!/usr/bin/env bash
+printf 'notify-send %s\n' "$*" >> "$FAKE_TMUX_LOG"
+FAKE
+chmod +x "$fake_dir/tmux" "$fake_dir/xdg-open" "$fake_dir/notify-send"
 
 # session_for() derives the tmux session from the workspace basename, so the
 # workspace must be named for the session that owns it.
@@ -149,6 +153,7 @@ case "$on_demand" in
   *--stride*) echo "FAIL: an on-demand review is not narrowed to a stride — got: $on_demand"
      fails=$((fails + 1)) ;;
 esac
+
 # --- a finished until-PR run --------------------------------------------------
 # The visual review page is built while the human may be on another window, so
 # its opening is held back like a popup and delivered on arrival instead.
@@ -156,7 +161,15 @@ both='/dev/pts/0 alpha
 /dev/pts/1 beta'
 page="$ws_parent/visual-review.html"
 rm -f "$ws/.claude/reviews/my-task.popped"
-fake_run "$both" ready my-task --page "$page" > /dev/null
+: > "$log"
+fake_run "$both" ready my-task --pr 42 --page "$page" > /dev/null
+# The human may be away from the terminal altogether.
+notice=$(grep -m1 '^notify-send' "$log" || true)
+case "$notice" in
+  *"#42"*my-task*|*my-task*"#42"*) ;;
+  *) echo "FAIL: a finished run notifies the desktop with its PR and task — got: ${notice:-<no notification>}"
+     fails=$((fails + 1)) ;;
+esac
 : > "$log"
 assert_status "a held-back page is due on arrival" "$(pop "$both")" 0
 grep -qx "xdg-open $page" "$log" ||

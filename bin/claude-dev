@@ -426,12 +426,13 @@ ctx_budget_warn() {
 # a window the human is not watching only arms the flag and says so on the
 # status line; pop_review delivers it when they switch to that window.
 cmd_ready() {
-  local slug="" note="" have_note=0 page=""
+  local slug="" note="" have_note=0 page="" pr=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --note)   have_note=1; note="${2:-}"; shift 2 || shift ;;
       --note=*) have_note=1; note="${1#--note=}"; shift ;;
       --page)   page="${2:-}"; shift 2 || shift ;;
+      --pr)     pr="${2:-}"; shift 2 || shift ;;
       -*) die "usage: claude-dev ready [slug] [--note <text>|--note -]" ;;
       *)  slug="$1"; shift ;;
     esac
@@ -457,6 +458,11 @@ cmd_ready() {
     rm -f "$dir/$window.context"
   fi
   echo "signalled review for '$window'"
+  # Sent even when the window is on screen: an active tmux window does not mean
+  # the human is at the desk.
+  if [ -n "$pr" ]; then
+    notify-send "PR #$pr ready for review" "$window" >/dev/null 2>&1 || true
+  fi
   [ -n "${TMUX:-}" ] || return 0
   local session; session=$(session_for "$root")
   if [ "$(tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null)" = "$window" ]; then

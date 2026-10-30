@@ -78,7 +78,7 @@ For detailed patterns and examples, load the `functional` skill.
 - KILL MUTANTS: Answer each survivor on the `mutation-testing` ladder, deleting code before adding a test (ask human when value is ambiguous)
 - REFACTOR: Assess improvement opportunities (only refactor if adds value)
 - CLEANUP: Run the `cleanup` skill over the change, its tests included — strip redundant transformations, back-compat shims, needless defensive code, dedup, and tests the change made redundant; loop until reinspection is empty
-- **Wait for commit approval** before every commit (exception: when `mmmss-stride` is loaded, the stride boundary is the approval point — commit each green stride, then stop for review)
+- **Wait for commit approval** before every commit (exception: under `until-pr` or `mmmss-stride`, commit each green step directly; `until-pr` stops for review once the PR is open, `mmmss-stride` after every commit)
 - Each increment leaves codebase in working state
 **Canonical flow for non-trivial work:** `grilling` (while it is still an idea) → `story-splitting` → `planning` → `tdd` (→ `mutation-testing` → `refactoring` → `cleanup`). Add `find-gaps` whenever a plan or AC set feels thin. Insert `walking-skeleton` before `planning` when the first slice's job is to prove a path exists (greenfield, unproven integration, no deploy pipeline).
 
@@ -86,7 +86,7 @@ For detailed patterns and examples, load the `functional` skill.
 
 Before planning, exploring, or writing a single line of code or test, classify the work and load the required skills. This is not optional.
 
-**Announce the set before loading it.** State, in one line, which skills you are about to load and the work type that selected them — `Skills: tdd, testing, mutation-testing — production code change`. Name anything you are deliberately leaving out and why. The human corrects the set in the same beat they answer the opening question, before the wrong skills are in context; correcting afterwards costs a session restart. Under `mmmss-stride` this rides along in the session-opening ceremony and costs no extra round trip.
+**Announce the set before loading it.** State, in one line, which skills you are about to load and the work type that selected them — `Skills: tdd, testing, mutation-testing — production code change`. Name anything you are deliberately leaving out and why. The human corrects the set in the same beat they answer the opening question, before the wrong skills are in context; correcting afterwards costs a session restart. Under `until-pr` or `mmmss-stride` this rides along in the opening message and costs no extra round trip.
 
 | Work type | Skills to load |
 |---|---|
@@ -123,8 +123,9 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 | `walking-skeleton` | The first slice must prove an architecture, integration, or deployment path rather than a feature — greenfield project/service, an unproven boundary, no pipeline yet, or a steel thread through legacy. Also: tracer bullet, steel thread. |
 | `planning` | Sequencing PR-sized slices with TDD execution details. Plans live in `plans/`. |
 | `find-gaps` | Adversarially review a plan, AC set, or mock to surface missing states / edge cases / unverifiable language **before** coding. |
-| `mmmss-stride` | Human-in-the-loop cadence: small strides, each ends green + committed, stop for review. Load by default for interactive coding sessions; overrides "wait for commit approval" (stride boundary = approval) and other workflow skills' pacing. |
-| `tdd` | RED → GREEN → MUTATE → REFACTOR → CLEANUP. Non-negotiable for every code change. Governs work *inside* a stride when `mmmss-stride` is loaded. |
+| `until-pr` | Default rhythm for coding sessions: approve destination + done once, then green commits without stops until the PR is open and its visual review is up. Overrides "wait for commit approval" and other workflow skills' pacing. |
+| `mmmss-stride` | Rhythm when the human asks for strides: each commit ends green, then stop for review. Overrides "wait for commit approval" (stride boundary = approval) and other workflow skills' pacing. |
+| `tdd` | RED → GREEN → MUTATE → REFACTOR → CLEANUP. Non-negotiable for every code change. Governs work *inside* each commit under `until-pr` or `mmmss-stride`. |
 | `testing` | Behaviour-driven tests, factories, test file structure. |
 | `mutation-testing` | Verifying test effectiveness; the MUTATE phase of `tdd`. |
 | `test-design-reviewer` | Evaluate test quality against Farley's 8 properties. |

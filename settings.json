@@ -33,7 +33,16 @@
     "feature-dev@claude-plugins-official": false,
     "playwright@claude-plugins-official": true,
     "security-guidance@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true
+    "pr-review-toolkit@claude-plugins-official": true,
+    "visual-review@pablocm90": true
+  },
+  "extraKnownMarketplaces": {
+    "pablocm90": {
+      "source": {
+        "source": "github",
+        "repo": "pablocm90/visual-review"
+      }
+    }
   },
   "feedbackDrafts": "off",
   "modelSettings": {

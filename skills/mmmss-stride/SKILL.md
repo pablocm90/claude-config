@@ -104,7 +104,7 @@ Ship as the shared file's *Shipping* says, every 2–4 strides, when a coherent 
 ## Composition with other skills
 
 - **`tdd`**: complementary. TDD governs the technique inside a stride; MMMSS governs the boundary between strides. The MUTATE / KILL-MUTANTS phases run inside the stride before the commit, and CLEANUP runs last, just before it.
-- **`until-pr`**: the other rhythm, and the default. A task runs one of the two.
+- **`until-pr`**: the other rhythm, and the default. A task runs one of the two, and claude-dev records which: a task not made with `--stride` cycles into `until-pr`. When strides start in chat, run `claude-dev task <slug> --stride` once so they survive a cycle.
 - **`planning`**: complementary. A plan defines the destination, not the step sequence. Use a plan to anchor "where are we going," then MMMSS picks each step adaptively.
 - **`feature-dev:feature-dev`** and other multi-agent / multi-step workflow skills: **MMMSS overrides.** Those skills assume long autonomous runs; that's exactly what this skill exists to prevent. If both are loaded, follow MMMSS.
 - **`story-splitting`**: upstream of MMMSS. Split a large story into vertical slices first, then use MMMSS to walk one slice.

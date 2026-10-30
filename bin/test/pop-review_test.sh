@@ -65,6 +65,7 @@ FAKE
 cat > "$fake_dir/xdg-open" <<'FAKE'
 #!/usr/bin/env bash
 printf 'xdg-open %s\n' "$*" >> "$FAKE_TMUX_LOG"
+exit "${FAKE_XDG_STATUS:-0}"
 FAKE
 cat > "$fake_dir/notify-send" <<'FAKE'
 #!/usr/bin/env bash
@@ -115,6 +116,8 @@ case "$popup_cmd" in
   *) echo "FAIL: a delivered review is narrowed to its stride — got: $popup_cmd"
      fails=$((fails + 1)) ;;
 esac
+
+assert_status "a delivered review does not pop on the next switch" "$(pop "$both")" 1
 
 # Nobody attached to this workspace: consuming the flag unseen loses the
 # review for good, so an undeliverable review stays armed.
@@ -194,6 +197,15 @@ if grep -q 'xdg-open' "$log" || ! grep -q 'display-popup' "$log"; then
   echo "FAIL: a later plain stride gets the popup, not the stale page — got: $(cat "$log")"
   fails=$((fails + 1))
 fi
+
+# A page the browser failed to open was never seen: it waits for the next
+# switch instead of being used up.
+fake_run "$both" ready my-task --page "$page" > /dev/null
+(export FAKE_XDG_STATUS=1; pop "$both") > /dev/null
+: > "$log"
+assert_status "a page that failed to open is due again" "$(pop "$both")" 0
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: the next switch retries a page that failed to open — got: $(cat "$log")"; fails=$((fails + 1)); }
 
 # Finishing while the human watches the task window: no switch is coming, so
 # the page opens straight away.

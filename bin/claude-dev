@@ -516,11 +516,12 @@ cmd_pop_review() {
   # unseen — leave it armed for the next window switch.
   local client
   client=$(client_for_session "$(session_for "$root")") || return 1
-  : > "$dir/$window.popped"
   if [ -f "$dir/$window.page" ]; then
-    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1
+    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1 || return 1
+    : > "$dir/$window.popped"
     return 0
   fi
+  : > "$dir/$window.popped"
   popup_review "$client" "$window" --stride
 }
 

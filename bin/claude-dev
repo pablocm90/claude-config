@@ -201,7 +201,7 @@ cmd_task() {
     esac
     shift
   done
-  [ -n "$slug" ] || die "usage: claude-dev task <slug> [repo ...]"
+  [ -n "$slug" ] || die "usage: claude-dev task <slug> [--stride] [repo ...]"
   local window; window=$(sanitize "$slug")
   branch="${branch:-$slug}"
 

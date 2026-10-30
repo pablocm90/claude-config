@@ -179,6 +179,11 @@ grep -qx "xdg-open $page" "$log" ||
 if grep -q 'display-popup' "$log"; then
   echo "FAIL: a held-back page replaces the review popup"; fails=$((fails + 1))
 fi
+: > "$log"
+assert_status "a second switch has nothing left to open" "$(pop "$both")" 1
+if grep -q 'xdg-open' "$log"; then
+  echo "FAIL: a second switch does not reopen the page"; fails=$((fails + 1))
+fi
 
 # A stride signalled after the run has no page of its own: the last one would
 # show a stale review.

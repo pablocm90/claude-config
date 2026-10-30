@@ -54,9 +54,11 @@ assert_contains "and the reminder names the size and the next move" \
 assert_contains "and tells you too" "$(jq -r '.systemMessage' <<<"$at_line")" "200k"
 assert_eq "and never blocks it" "$(jq -r '.decision // "none"' <<<"$at_line")" "none"
 
+# One session per transcript, so a reminder recorded for one case never
+# silences another.
 after_tool() {
-  jq -cn --arg tx "$2" '{hook_event_name: "PostToolUse", session_id: "s1", transcript_path: $tx, tool_name: "Bash"}' \
-    | env PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW="$1" CLAUDE_DEV_ROOT="$ws" bash "$HOOK"
+  jq -cn --arg tx "$2" '{hook_event_name: "PostToolUse", session_id: ($tx | split("/") | last), transcript_path: $tx, tool_name: "Bash"}' \
+    | env PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW="$1" CLAUDE_DEV_ROOT="$ws" XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK"
 }
 
 assert_eq "a task just under 150k is not reminded after a tool call" \
@@ -67,6 +69,10 @@ assert_eq "an until-pr task at 150k is reminded after a tool call" \
   "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$tool_line")" "PostToolUse"
 assert_contains "to cycle at the next green commit by itself" \
   "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$tool_line")" "run claude-dev cycle yourself"
+assert_eq "and only once: the session's next tool call is silent" \
+  "$(after_tool task1 "$tmp/tool150.jsonl")" ""
+assert_contains "while the session a cycle starts is reminded afresh" \
+  "$(after_tool task1 "$(transcript_at cycled160 160000)")" "run claude-dev cycle yourself"
 
 mkdir -p "$ws/.claude/handoffs"; touch "$ws/.claude/handoffs/strided.stride"
 assert_eq "a stride task past 150k is left to the prompt reminder" \

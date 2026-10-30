@@ -352,7 +352,9 @@ cmd_prune() {
 }
 
 cmd_mode() {
-  if [ -f "$(stride_marker "$(resolve_root)" "$(current_window || true)")" ]; then
+  local window; window=$(current_window || true)
+  [ -n "$window" ] && [ "$window" != hub ] || die "not in a task window"
+  if [ -f "$(stride_marker "$(resolve_root)" "$window")" ]; then
     echo stride
   else
     echo until-pr

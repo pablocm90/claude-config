@@ -72,6 +72,12 @@ mkdir -p "$ws/.claude/handoffs"; touch "$ws/.claude/handoffs/strided.stride"
 assert_eq "a stride task past 150k is left to the prompt reminder" \
   "$(after_tool strided "$(transcript_at stride160 160000)")" ""
 
+assert_eq "the hub window is no task, so it is not reminded after a tool call" \
+  "$(after_tool hub "$(transcript_at hub160 160000)")" ""
+assert_eq "nor is a session outside tmux" \
+  "$(jq -cn --arg tx "$(transcript_at bare160 160000)" '{hook_event_name: "PostToolUse", session_id: "s1", transcript_path: $tx}' \
+     | env -u TMUX -u TMUX_PANE PATH="$bin:$PATH" CLAUDE_DEV_ROOT="$ws" bash "$HOOK")" ""
+
 assert_eq "a missing transcript is silent" "$(run "$tmp/none.jsonl")" ""
 assert_eq "and so is a session with no calls yet" \
   "$(printf '%s\n' '{"type":"user","message":{"content":"hi"}}' > "$tmp/new.jsonl"; run "$tmp/new.jsonl")" ""

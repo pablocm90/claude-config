@@ -89,12 +89,13 @@ fake_run() {
 }
 
 # Two workspaces open on one tmux server, each with its own attached terminal.
+both='/dev/pts/0 alpha
+/dev/pts/1 beta'
 pop() { fake_run "$1" pop-review my-task; }
 
 : > "$ws/.claude/reviews/my-task.ready"
 : > "$log"
-pop '/dev/pts/0 alpha
-/dev/pts/1 beta' > /dev/null
+pop "$both" > /dev/null
 popup_cmd=$(grep -m1 'display-popup' "$log" || true)
 popup_cmd=$(printf %s "$popup_cmd" | tr -d \\047)   # quoting is incidental; the client is not
 
@@ -130,13 +131,7 @@ fi
 # prefix + r asks for a review on demand. It runs through the same client
 # lookup: a key press knows its client, but the popup it builds does not.
 : > "$log"
-(
-  export PATH="$fake_dir:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$log"
-  export FAKE_TMUX_CLIENTS='/dev/pts/0 alpha
-/dev/pts/1 beta'
-  unset TMUX_PANE
-  CLAUDE_DEV_ROOT="$ws" bash "$CD" review-popup my-task >/dev/null 2>&1
-)
+fake_run "$both" review-popup my-task > /dev/null
 on_demand=$(grep -m1 'display-popup' "$log" || true)
 on_demand=$(printf %s "$on_demand" | tr -d \\047)
 
@@ -159,17 +154,14 @@ esac
 # --- a finished until-PR run --------------------------------------------------
 # The visual review page is built while the human may be on another window, so
 # its opening is held back like a popup and delivered on arrival instead.
-both='/dev/pts/0 alpha
-/dev/pts/1 beta'
 page="$ws_parent/visual-review.html"
-rm -f "$ws/.claude/reviews/my-task.popped"
 : > "$log"
 assert_status "a failed notification does not fail the finish" \
   "$(fake_run "$both" ready my-task --pr 42 --page "$page")" 0
 # The human may be away from the terminal altogether.
 notice=$(grep -m1 '^notify-send' "$log" || true)
 case "$notice" in
-  *"#42"*my-task*|*my-task*"#42"*) ;;
+  *"#42"*my-task*) ;;
   *) echo "FAIL: a finished run notifies the desktop with its PR and task — got: ${notice:-<no notification>}"
      fails=$((fails + 1)) ;;
 esac
@@ -201,7 +193,7 @@ fi
 # Finishing while the human watches the task window: no switch is coming, so
 # the page opens straight away.
 : > "$log"
-(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --pr 43 --page "$page") > /dev/null
+(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --page "$page") > /dev/null
 grep -qx "xdg-open $page" "$log" ||
   { echo "FAIL: finishing on the task window opens the page at once — got: $(cat "$log")"; fails=$((fails + 1)); }
 

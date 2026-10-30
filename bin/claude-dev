@@ -460,15 +460,17 @@ cmd_ready() {
   echo "signalled review for '$window'"
   # Sent even when the window is on screen: an active tmux window does not mean
   # the human is at the desk.
+  local what="review"
   if [ -n "$pr" ]; then
-    notify-send "PR #$pr ready for review" "$window" >/dev/null 2>&1 || true
+    what="PR #$pr"
+    notify-send "$what ready for review" "$window" >/dev/null 2>&1 || true
   fi
   [ -n "${TMUX:-}" ] || return 0
   local session; session=$(session_for "$root")
   if [ "$(tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null)" = "$window" ]; then
     cmd_pop_review "$window"
   else
-    tmux display-message -t "$session" "review ready in '$window'" 2>/dev/null || true
+    tmux display-message -t "$session" "$what ready in '$window'" 2>/dev/null || true
   fi
 }
 

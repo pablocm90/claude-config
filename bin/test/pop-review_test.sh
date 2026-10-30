@@ -172,6 +172,13 @@ case "$notice" in
   *) echo "FAIL: a finished run notifies the desktop with its PR and task — got: ${notice:-<no notification>}"
      fails=$((fails + 1)) ;;
 esac
+# Off the window, the status line says which PR is waiting there.
+status_line=$(grep -m1 '^display-message -t beta ' "$log" || true)
+case "$status_line" in
+  *"PR #42"*my-task*) ;;
+  *) echo "FAIL: the status line names the ready PR — got: ${status_line:-<no status message>}"
+     fails=$((fails + 1)) ;;
+esac
 : > "$log"
 assert_status "a held-back page is due on arrival" "$(pop "$both")" 0
 grep -qx "xdg-open $page" "$log" ||

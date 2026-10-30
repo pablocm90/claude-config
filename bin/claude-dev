@@ -185,7 +185,8 @@ task_claude() {
   printf '%s --remote-control %q' "$CLAUDE_CMD" "$1"
 }
 
-# Left by `task --stride`; cycle reads it to tell the fresh session to wait.
+# Left by `task --stride`, cleared by `done`; cycle reads it to tell the fresh
+# session to wait.
 stride_marker() { printf '%s/.claude/handoffs/%s.stride' "$1" "$2"; }
 
 cmd_task() {
@@ -279,6 +280,7 @@ cmd_done() {
     echo "removed: $wt"
   done
   [ "${#wts[@]}" -gt 0 ] || echo "no worktree named '$window' found (removing window only)"
+  rm -f "$(stride_marker "$root" "$window")"
   tmux kill-window -t "$session:$window" 2>/dev/null || true
 }
 

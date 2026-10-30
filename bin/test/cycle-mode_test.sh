@@ -69,6 +69,14 @@ run task unhanded --stride
 assert_prompt "a task with no handoff proposes and waits, whatever its rhythm" \
   "$(cycle_prompt unhanded)" "propose the next stride, and wait"
 
+# --- a slug reused after `done` starts over in until-pr ----------------------
+run task reused --stride
+run done reused
+run task reused
+write_handoff reused
+assert_prompt "a task made again without a flag after done carries on" \
+  "$(cycle_prompt reused)" "load the until-pr skill and carry on"
+
 rm -rf "$bin" "$tmp"
 [ "$fails" -eq 0 ] && echo "cycle-mode: all passed"
 exit "$fails"

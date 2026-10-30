@@ -20,7 +20,7 @@ FAKE
 chmod +x "$bin/tmux"
 
 tmp=$(mktemp -d); ws="$tmp/alpha"
-mkdir -p "$ws/.claude/handoffs"
+mkdir -p "$ws"
 git init -q --bare -b master "$tmp/origin"
 git clone -q "$tmp/origin" "$tmp/seed" 2>/dev/null
 git -C "$tmp/seed" commit -q --allow-empty -m init
@@ -36,9 +36,13 @@ run() {
 
 cycle_prompt() {
   : > "$LOG"
-  touch "$ws/.claude/handoffs/$1.md"
   FAKE_WINDOWS="$1" run cycle "$1"
   grep -F 'send-keys' "$LOG" | tr -d '\\'
+}
+
+write_handoff() {
+  mkdir -p "$ws/.claude/handoffs"
+  touch "$ws/.claude/handoffs/$1.md"
 }
 
 assert_prompt() {
@@ -48,10 +52,22 @@ assert_prompt() {
   esac
 }
 
+# --- a task made with --stride proposes its next stride and waits ------------
+run task strided --stride
+write_handoff strided
+assert_prompt "a task made with --stride waits after a cycle" \
+  "$(cycle_prompt strided)" "load the mmmss-stride skill, then give a one-line status plus the handoff's proposed next stride, and wait"
+
 # --- a task made without a flag carries on after a cycle ---------------------
 run task plain
+write_handoff plain
 assert_prompt "a task made without a flag carries on after a cycle" \
   "$(cycle_prompt plain)" "load the until-pr skill and carry on"
+
+# --- a stride task cycled before its first handoff still proposes and waits --
+run task unhanded --stride
+assert_prompt "a task with no handoff proposes and waits, whatever its rhythm" \
+  "$(cycle_prompt unhanded)" "propose the next stride, and wait"
 
 rm -rf "$bin" "$tmp"
 [ "$fails" -eq 0 ] && echo "cycle-mode: all passed"

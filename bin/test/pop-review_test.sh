@@ -198,9 +198,12 @@ fi
 # Finishing while the human watches the task window: no switch is coming, so
 # the page opens straight away.
 : > "$log"
-(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --page "$page") > /dev/null
+(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --pr 43 --page "$page") > /dev/null
 grep -qx "xdg-open $page" "$log" ||
   { echo "FAIL: finishing on the task window opens the page at once — got: $(cat "$log")"; fails=$((fails + 1)); }
+# Watching the window in tmux does not mean being at the desk.
+grep -q '^notify-send .*#43' "$log" ||
+  { echo "FAIL: finishing on the task window still notifies the desktop — got: $(cat "$log")"; fails=$((fails + 1)); }
 
 rm -rf "$fake_dir" "$ws_parent"
 

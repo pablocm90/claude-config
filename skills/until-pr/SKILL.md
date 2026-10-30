@@ -58,7 +58,7 @@ When the done criterion holds:
 
 ## Follow-up
 
-The human's reply to the review is a new destination on the same PR. Restate it in one line as destination and done criterion, then run again with the same early stops and context rule. The run ends with a push and a fresh visual review of the PR. The task ends when the human approves or merges.
+The human's reply to the review is a new destination on the same PR. Restate it in one line as destination and done criterion, then run again with the same early stops and context rule. The run ends with a push and a fresh visual review of the PR, delivered as *Finish* step 2 says. The task ends when the human approves or merges.
 
 ## Composition with other skills
 

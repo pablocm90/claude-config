@@ -136,7 +136,7 @@ A task runs one of two rhythms. **Until-PR** (`until-pr`, the default): you
 approve where the task is going and how to tell it got there, then Claude
 commits green steps without stopping until a PR is open, and you review that PR
 through its visual review. **Strides** (`mmmss-stride`, on request): Claude
-stops after every commit for a review of just that commit, as below.
+stops after every commit for a review of just that commit.
 
 A session looks like this:
 
@@ -153,8 +153,19 @@ On the right, a shell per repo worktree and a workspace shell. Bottom right, the
 green `▶` names whichever task currently holds the dev ports. Screenshots are of
 a throwaway two-repo demo workspace, not a real project.*
 
-The shells are already `cd`'d into their worktrees. Claude works in small
-strides, committing at each green point. When a stride lands it calls:
+The shells are already `cd`'d into their worktrees. Claude commits at each
+green point. In until-PR, it pushes and opens the PR when the task is done,
+builds the visual review page, and calls:
+
+```bash
+claude-dev ready --pr 42 --page <visual review page>
+```
+
+which sends a desktop notification and opens the page on the task window: at
+once if you're on it, otherwise when you next switch there, and only once. Your
+reply in the Claude pane starts the next run on the same PR.
+
+In strides, when a stride lands Claude calls:
 
 ```bash
 claude-dev ready --note "what this stride did and what to look at"
@@ -169,8 +180,8 @@ review's opening paragraph, so you get the author's framing before the diff.
 *A review: what changed and against what base, the diffstat, a reference map of
 what calls the changed files, then the diff through `delta`.*
 
-When a slice is coherent it is pushed and a PR opened by hand — the status
-pane shows CI, and merging is always a human action. Afterwards:
+In either rhythm the status pane shows CI, and merging is always a human
+action. Afterwards:
 
 ```bash
 claude-dev done fix-timezone     # drop the window and worktree (refuses if dirty)

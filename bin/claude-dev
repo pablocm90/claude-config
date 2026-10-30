@@ -449,7 +449,7 @@ cmd_ready() {
   local window; window=$(sanitize "$slug")
   # until-pr signals only its finish; a page-less signal would pop a stride review.
   [ -n "$page" ] || [ -f "$(stride_marker "$root" "$window")" ] ||
-    die "'$window' runs until-pr: signal its finish with 'claude-dev ready --pr <n> --page <path>'"
+    die "'$window' runs until-pr: finish it with 'claude-dev ready --pr <n> --page <path>', or switch it to strides with 'claude-dev task $window --stride' first"
   local dir="$root/.claude/reviews"
   mkdir -p "$dir"
   : > "$dir/$window.ready"

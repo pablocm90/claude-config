@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# context-reminder: UserPromptSubmit hook. Once a session's context passes
-# 200k tokens, every call re-reads all of it, so remind Claude (and the human)
-# to hand off and cycle at the next stride boundary. Never blocks the prompt.
+# context-reminder: UserPromptSubmit and PostToolUse hook. Every call re-reads
+# the whole context, so remind Claude (and the human) to hand off and cycle:
+# after a prompt once a session passes 200k tokens, and after a tool call once
+# it passes 150k, since an unattended until-pr run sends no prompts. Never blocks.
 set -uo pipefail
 
-THRESHOLD=200000
-
-transcript=$(jq -r '.transcript_path // empty' 2>/dev/null)
+input=$(cat)
+event=$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null)
+transcript=$(jq -r '.transcript_path // empty' <<<"$input" 2>/dev/null)
 [ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
 
 tokens=$(
@@ -15,13 +16,30 @@ tokens=$(
              | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)' 2>/dev/null \
     | head -n 1
 )
-[ -n "$tokens" ] && [ "$tokens" -ge "$THRESHOLD" ] 2>/dev/null || exit 0
+threshold=200000
+[ "$event" = PostToolUse ] && threshold=150000
+[ -n "$tokens" ] && [ "$tokens" -ge "$threshold" ] 2>/dev/null || exit 0
 
 k=$((tokens / 1000))
-jq -cn --arg k "$k" '{
-  systemMessage: ("Context at " + $k + "k tokens: time to hand off and cycle."),
+mode=$("$(dirname "$0")/claude-dev" mode 2>/dev/null)
+if [ "$event" = PostToolUse ]; then
+  [ "$mode" = until-pr ] || exit 0
+  reminded="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/claude-context-reminder/$(jq -r '.session_id' <<<"$input")"
+  [ ! -e "$reminded" ] || exit 0
+  mkdir -p "$(dirname "$reminded")" && touch "$reminded"
+fi
+
+if [ "$mode" = until-pr ]; then
+  you="cycling at the next green commit."
+  next="At the next green commit, run the handoff skill, then run claude-dev cycle yourself."
+else
+  you="time to hand off and cycle."
+  next="Finish the current stride, then run the handoff skill and propose claude-dev cycle before starting new work."
+fi
+jq -cn --arg event "$event" --arg k "$k" --arg you "$you" --arg next "$next" '{
+  systemMessage: ("Context at " + $k + "k tokens: " + $you),
   hookSpecificOutput: {
-    hookEventName: "UserPromptSubmit",
-    additionalContext: ("This session is at " + $k + "k tokens of context, and every call re-reads all of it. Finish the current stride, then run the handoff skill and propose claude-dev cycle before starting new work.")
+    hookEventName: $event,
+    additionalContext: ("This session is at " + $k + "k tokens of context, and every call re-reads all of it. " + $next)
   }
 }'

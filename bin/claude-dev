@@ -22,6 +22,7 @@
 #   claude-dev serve-cmd [path]          what serve would start there, and why it
 #                                        would fail if nothing is configured
 #   claude-dev serve-ports               the ports a served task takes over
+#   claude-dev mode                      this task window's rhythm: until-pr or stride
 #   claude-dev ls                        list task windows and worktrees
 #   claude-dev doctor                    check this workspace against the
 #                                        conventions claude-dev assumes
@@ -65,11 +66,17 @@ hoist_root() {
   if [ -f "$parent/CLAUDE.md" ]; then printf '%s' "$parent"; else printf '%s' "$start"; fi
 }
 
-resolve_root() {
+# The root claude-dev recorded for this tmux session; empty in any other.
+recorded_root() {
   local root="${CLAUDE_DEV_ROOT:-}"
   if [ -z "$root" ] && [ -n "${TMUX:-}" ]; then
     root=$(tmux show-environment CLAUDE_DEV_ROOT 2>/dev/null | cut -d= -f2- || true)
   fi
+  printf '%s' "$root"
+}
+
+resolve_root() {
+  local root; root=$(recorded_root)
   printf '%s' "${root:-$(hoist_root "$PWD")}"
 }
 
@@ -348,6 +355,18 @@ cmd_prune() {
     repo="${wt%/.claude/worktrees/*}"
     git -C "$repo" worktree remove "$wt" && echo "removed: $wt"
   done
+}
+
+cmd_mode() {
+  local window root
+  window=$(current_window || true)
+  root=$(recorded_root)
+  [ -n "$window" ] && [ "$window" != hub ] && [ -n "$root" ] || die "not in a task window"
+  if [ -f "$(stride_marker "$root" "$window")" ]; then
+    echo stride
+  else
+    echo until-pr
+  fi
 }
 
 cmd_cycle() {
@@ -763,6 +782,7 @@ case "${1:-}" in
   reset)  shift; cmd_reset "$@" ;;
   prune)  shift; cmd_prune "$@" ;;
   cycle)  shift; cmd_cycle "$@" ;;
+  mode)   shift; cmd_mode "$@" ;;
   ready)  shift; cmd_ready "$@" ;;
   pop-review) shift; cmd_pop_review "$@" ;;
   review-popup) shift; cmd_review_popup "$@" ;;

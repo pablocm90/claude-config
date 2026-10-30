@@ -25,6 +25,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/bin/context-reminder",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {

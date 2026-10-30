@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Behaviour tests for the UserPromptSubmit hook that reminds Claude to cycle
-# once a session's context passes 200k tokens.
+# Behaviour tests for the hook that reminds Claude to cycle: after a prompt
+# once a session's context passes 200k tokens, and after a tool call once an
+# until-pr task passes 150k.
 set -uo pipefail
 
 HOOK="$(cd "$(dirname "$0")/.." && pwd)/context-reminder"
@@ -17,6 +18,19 @@ assert_contains() {
 }
 
 tmp=$(mktemp -d)
+
+# A claude-dev workspace whose task windows the hook can ask about.
+ws="$tmp/alpha"; mkdir -p "$ws"
+bin="$tmp/bin"; mkdir -p "$bin"
+cat > "$bin/tmux" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in
+  "display-message -p -t %1 #W") printf '%s\n' "$FAKE_WINDOW" ;;
+  "show-environment CLAUDE_DEV_ROOT") [ -z "${FAKE_ROOT:-}" ] || printf 'CLAUDE_DEV_ROOT=%s\n' "$FAKE_ROOT" ;;
+esac
+exit 0
+FAKE
+chmod +x "$bin/tmux"
 
 # A transcript whose last call re-read `context` tokens, after an earlier,
 # larger call: what counts is where the session is now, not where it peaked.
@@ -40,6 +54,53 @@ assert_contains "and the reminder names the size and the next move" \
   "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$at_line")" "200k tokens"
 assert_contains "and tells you too" "$(jq -r '.systemMessage' <<<"$at_line")" "200k"
 assert_eq "and never blocks it" "$(jq -r '.decision // "none"' <<<"$at_line")" "none"
+
+# One session per transcript, so a reminder recorded for one case never
+# silences another.
+after_tool() {
+  jq -cn --arg tx "$2" '{hook_event_name: "PostToolUse", session_id: ($tx | split("/") | last), transcript_path: $tx, tool_name: "Bash"}' \
+    | env PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW="$1" CLAUDE_DEV_ROOT="$ws" XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK"
+}
+
+assert_eq "a task just under 150k is not reminded after a tool call" \
+  "$(after_tool task1 "$(transcript_at tool149 149999)")" ""
+
+tool_line=$(after_tool task1 "$(transcript_at tool150 150000)")
+assert_eq "an until-pr task at 150k is reminded after a tool call" \
+  "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$tool_line")" "PostToolUse"
+assert_contains "to cycle at the next green commit by itself" \
+  "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$tool_line")" "run claude-dev cycle yourself"
+assert_eq "and only once: the session's next tool call is silent" \
+  "$(after_tool task1 "$tmp/tool150.jsonl")" ""
+assert_contains "while the session a cycle starts is reminded afresh" \
+  "$(after_tool task1 "$(transcript_at cycled160 160000)")" "run claude-dev cycle yourself"
+
+mkdir -p "$ws/.claude/handoffs"; touch "$ws/.claude/handoffs/strided.stride"
+assert_eq "a stride task past 150k is left to the prompt reminder" \
+  "$(after_tool strided "$(transcript_at stride160 160000)")" ""
+
+assert_eq "the hub window is no task, so it is not reminded after a tool call" \
+  "$(after_tool hub "$(transcript_at hub160 160000)")" ""
+assert_eq "nor is a session outside tmux" \
+  "$(jq -cn --arg tx "$(transcript_at bare160 160000)" '{hook_event_name: "PostToolUse", session_id: "s1", transcript_path: $tx}' \
+     | env -u TMUX -u TMUX_PANE PATH="$bin:$PATH" CLAUDE_DEV_ROOT="$ws" bash "$HOOK")" ""
+
+before_prompt() {
+  jq -cn --arg tx "$2" '{hook_event_name: "UserPromptSubmit", transcript_path: $tx, prompt: "go"}' \
+    | env PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW="$1" CLAUDE_DEV_ROOT="$ws" bash "$HOOK" \
+    | jq -r '.hookSpecificOutput.additionalContext'
+}
+assert_contains "at 200k an until-pr task is told to cycle by itself" \
+  "$(before_prompt task1 "$(transcript_at prompt-until 200000)")" "run claude-dev cycle yourself"
+assert_contains "and a stride task to propose it" \
+  "$(before_prompt strided "$(transcript_at prompt-stride 200000)")" "propose claude-dev cycle"
+assert_eq "nor is a window in a tmux session claude-dev did not start" \
+  "$(jq -cn --arg tx "$(transcript_at plain160 160000)" '{hook_event_name: "PostToolUse", session_id: "plain", transcript_path: $tx}' \
+     | (cd "$ws" && env -u CLAUDE_DEV_ROOT PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW=zsh XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK"))" ""
+assert_contains "while a task whose root only tmux knows is reminded" \
+  "$(jq -cn --arg tx "$(transcript_at tmuxroot160 160000)" '{hook_event_name: "PostToolUse", session_id: "tmuxroot", transcript_path: $tx}' \
+     | env -u CLAUDE_DEV_ROOT PATH="$bin:$PATH" TMUX=fake TMUX_PANE=%1 FAKE_WINDOW=task1 FAKE_ROOT="$ws" XDG_RUNTIME_DIR="$tmp/run" bash "$HOOK")" \
+  "run claude-dev cycle yourself"
 
 assert_eq "a missing transcript is silent" "$(run "$tmp/none.jsonl")" ""
 assert_eq "and so is a session with no calls yet" \

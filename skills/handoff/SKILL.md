@@ -25,7 +25,6 @@ Long sessions accumulate stale context; a task doesn't need the whole conversati
    **Position**: <last completed stride; what is green / committed / pushed / deployed>
    **Next stride**: <ONE stride — the MMMSS rule applies to handoffs too>
    **Skills**: <the set the next stride needs, and the work type that chose it>
-   **Rhythm**: <until-pr | mmmss-stride — the one this task runs>
    **Live context**: <in-flight decisions, tricky state, ephemeral gotchas not worth memory>
    ```
 
@@ -34,7 +33,7 @@ Long sessions accumulate stale context; a task doesn't need the whole conversati
 
 ## Procedure (receiving side — the fresh session)
 
-A session launched by `claude-dev cycle` is prompted to read the handoff. Read it plus the plan it references, then load the rhythm skill its **Rhythm** line names (`until-pr` when it names none) and open with that skill's opening, sourced from the handoff: destination, done criterion, the handoff's next stride as the proposed first step, and its skills as the set to load. One-line status, then wait for the human.
+A session launched by `claude-dev cycle` is prompted to read the handoff, and the prompt names the task's rhythm skill: `mmmss-stride` for a task made with `--stride`, `until-pr` otherwise. Read the handoff plus the plan it references, load that skill and the handoff's skills set, then open as that skill says, sourced from the handoff: destination, done criterion, and the handoff's next stride as the first step. Under `until-pr` carry on from there; under `mmmss-stride` wait for the human.
 
 ## Rules
 

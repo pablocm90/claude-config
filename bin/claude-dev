@@ -2,9 +2,11 @@
 # claude-dev: tmux workspace wired for a Claude Code, task-per-window workflow.
 #
 #   claude-dev [--fresh] [folder]        hub session: claude | PR/CI status pane
-#   claude-dev task <slug> [repo ...]    add a task window: claude | shell per worktree
+#   claude-dev task <slug> [--stride] [repo ...]
+#                                        add a task window: claude | shell per worktree
 #                                        on a worktree <repo>/.claude/worktrees/<slug>
-#                                        (Claude starts with Remote Control on)
+#                                        (Claude starts with Remote Control on); the
+#                                        task runs until-pr unless made with --stride
 #   claude-dev done <slug>               remove task worktree(s) + window (refuses if dirty)
 #   claude-dev reset [slug]              after its PR merges, restart the task's worktree(s)
 #                                        from the default branch (refuses if dirty
@@ -183,24 +185,34 @@ task_claude() {
   printf '%s --remote-control %q' "$CLAUDE_CMD" "$1"
 }
 
+# Left by `task --stride`, cleared by `done`; cycle reads it to tell the fresh
+# session to wait.
+stride_marker() { printf '%s/.claude/handoffs/%s.stride' "$1" "$2"; }
+
 cmd_task() {
-  local slug="" branch="" frags=() arg
+  local slug="" branch="" frags=() arg stride=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --branch|-b) branch="$2"; shift ;;
+      --stride) stride=1 ;;
       -h|--help) usage; exit 0 ;;
       -*) die "unknown flag: $1" ;;
       *) if [ -z "$slug" ]; then slug="$1"; else frags+=("$1"); fi ;;
     esac
     shift
   done
-  [ -n "$slug" ] || die "usage: claude-dev task <slug> [repo ...]"
+  [ -n "$slug" ] || die "usage: claude-dev task <slug> [--stride] [repo ...]"
   local window; window=$(sanitize "$slug")
   branch="${branch:-$slug}"
 
   local root; root=$(resolve_root)
   local session; session=$(session_for "$root")
   tmux has-session -t "$session" 2>/dev/null || die "no session '$session' — run claude-dev first"
+
+  if [ "$stride" -eq 1 ]; then
+    mkdir -p "$root/.claude/handoffs"
+    touch "$(stride_marker "$root" "$window")"
+  fi
 
   if tmux list-windows -t "$session" -F '#W' | grep -qx "$window"; then
     tmux select-window -t "$session:$window"
@@ -268,6 +280,7 @@ cmd_done() {
     echo "removed: $wt"
   done
   [ "${#wts[@]}" -gt 0 ] || echo "no worktree named '$window' found (removing window only)"
+  rm -f "$(stride_marker "$root" "$window")"
   tmux kill-window -t "$session:$window" 2>/dev/null || true
 }
 
@@ -348,10 +361,12 @@ cmd_cycle() {
   tmux list-windows -t "$session" -F '#W' | grep -qx "$window" || die "no window '$window' in session '$session'"
 
   local hf="$root/.claude/handoffs/$window.md" prompt
-  if [ -f "$hf" ]; then
-    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then give a one-line status plus the handoff's proposed next stride, and wait."
-  else
+  if [ ! -f "$hf" ]; then
     prompt="Fresh session for task '$window' (no handoff file found at $hf). Inspect the task worktrees' branch state and open PRs, propose the next stride, and wait."
+  elif [ -f "$(stride_marker "$root" "$window")" ]; then
+    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then load the mmmss-stride skill, then give a one-line status plus the handoff's proposed next stride, and wait."
+  else
+    prompt="Fresh session for task '$window'. Read $hf and the plan it references, then load the until-pr skill and carry on from the handoff's next step without waiting."
   fi
   # One tmux invocation: respawn kills this script too when run from the
   # target pane, so send-keys must already be queued server-side.

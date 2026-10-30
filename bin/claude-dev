@@ -360,7 +360,7 @@ cmd_cycle() {
   echo "cycled: fresh session in $session:$window"
 }
 
-# The stride note's budget (mmmss-stride step 3: 120 words, 25 per label) is
+# The stride note's budget (mmmss-stride end-of-stride step 2: 120 words, 25 per label) is
 # prose guidance, and prose drifts — every note written before this check
 # averaged 230 words, which is what made the review pane unreadable. Warn on
 # stderr, never block: the stride is already committed, and a note over budget

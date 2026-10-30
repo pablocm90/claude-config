@@ -37,7 +37,7 @@ For a skeleton through **untested legacy code**, load `finding-seams` and `chara
 
 Then hand off: `planning` sequences the flesh, `find-gaps` checks the deferrals you wrote down were deliberate.
 
-Under `mmmss-stride`, the skeleton is **not** one big first commit. See "Building It In Strides" below.
+Under `until-pr` or `mmmss-stride`, the skeleton is **not** one big first commit. See "Building It In Strides" below.
 
 ## The Terms, Distinguished
 
@@ -167,7 +167,7 @@ The rule for a stub: **stub what is well understood, never what is uncertain.** 
 
 ## Building It In Strides
 
-Under `mmmss-stride` the skeleton is not one commit. Each stride ends green and committed:
+Under `until-pr` or `mmmss-stride` the skeleton is not one commit. Each stride ends green and committed:
 
 1. Project boots + one unit test runs. Commit.
 2. CI runs that test on push. Commit.

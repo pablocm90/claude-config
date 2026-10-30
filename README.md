@@ -127,10 +127,16 @@ globally.
 
 ## How it's used
 
-The tooling exists to run one workflow: **many small strides, each reviewed by
-a human**. `claude-dev` builds a tmux session where each task owns a window,
-each window owns a git worktree, and reviews arrive automatically at the end
-of every stride rather than being asked for.
+The tooling exists to run one workflow: **small green commits, reviewed by a
+human**. `claude-dev` builds a tmux session where each task owns a window,
+each window owns a git worktree, and reviews arrive automatically rather than
+being asked for.
+
+A task runs one of two rhythms. **Until-PR** (`until-pr`, the default): you
+approve where the task is going and how to tell it got there, then Claude
+commits green steps without stopping until a PR is open, and you review that PR
+through its visual review. **Strides** (`mmmss-stride`, on request): Claude
+stops after every commit for a review of just that commit, as below.
 
 A session looks like this:
 
@@ -245,8 +251,8 @@ names no port. None of those raises an error; they just leave the tool looking
 as though it had forgotten a repo existed. Run it once in a new workspace, and
 again whenever something behaves that way.
 
-**The pre-push gate.** `mmmss-stride` requires one fast static gate before a
-push and defers to the project for the command. Name it in the project's
+**The pre-push gate.** Both rhythms require one fast static gate before a
+push and defer to the project for the command. Name it in the project's
 `CLAUDE.md` — that file is the single source of truth for it.
 
 **What `claude-dev serve` starts.** Detection covers Rails (`bin/rails s`) and

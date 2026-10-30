@@ -75,7 +75,7 @@ RED → GREEN → MUTATE → KILL MUTANTS → REFACTOR → **CLEANUP** → commi
   turns the suite red is a revert, not a finding.
 - Deleting code is the expected outcome. If a "cleanup" adds abstraction, it belongs
   in REFACTOR (`refactoring` skill), not here.
-- Under `mmmss-stride`, this runs inside the end-of-stride ceremony, before confirming
-  green and committing — so each stride is committed already cleaned.
+- Under `until-pr` or `mmmss-stride`, this runs before every commit, ahead of confirming
+  green and committing — so each commit is made already cleaned.
 - Do not delete a public method on grep evidence alone (console/operator tools), and
   do not remove a defensive guard that a test or a documented gotcha pins.

@@ -25,15 +25,16 @@ Long sessions accumulate stale context; a task doesn't need the whole conversati
    **Position**: <last completed stride; what is green / committed / pushed / deployed>
    **Next stride**: <ONE stride — the MMMSS rule applies to handoffs too>
    **Skills**: <the set the next stride needs, and the work type that chose it>
+   **Rhythm**: <until-pr | mmmss-stride — the one this task runs>
    **Live context**: <in-flight decisions, tricky state, ephemeral gotchas not worth memory>
    ```
 
    Keep it under ~40 lines. If it wants to be longer, the overflow belongs in the plan or memory — move it there instead.
-3. **Hand over**: if the human invoked `/cycle`, run `claude-dev cycle` yourself — that is what they asked for. Otherwise tell them the handoff is written and that `/cycle`, or `claude-dev cycle <slug>` from the task window's shell pane, will respawn the pane with a fresh session. Then stop — do not start new work.
+3. **Hand over**: if the human invoked `/cycle`, or the task runs `until-pr`, run `claude-dev cycle` yourself — that is what they asked for. Otherwise tell them the handoff is written and that `/cycle`, or `claude-dev cycle <slug>` from the task window's shell pane, will respawn the pane with a fresh session. Then stop — do not start new work.
 
 ## Procedure (receiving side — the fresh session)
 
-A session launched by `claude-dev cycle` is prompted to read the handoff. Read it plus the plan it references, then open with the MMMSS ceremony sourced from the handoff: destination, done criterion, the handoff's next stride as the proposed first step, and its skills as the set to load. One-line status, then wait for the human.
+A session launched by `claude-dev cycle` is prompted to read the handoff. Read it plus the plan it references, then load the rhythm skill its **Rhythm** line names (`until-pr` when it names none) and open with that skill's opening, sourced from the handoff: destination, done criterion, the handoff's next stride as the proposed first step, and its skills as the set to load. One-line status, then wait for the human.
 
 ## Rules
 

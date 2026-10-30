@@ -21,7 +21,7 @@ The first message declares three things, then waits for the human to confirm or 
 
 The path is yours to pick. The human sees it at the visual review.
 
-A session started by `claude-dev cycle` opens with the same three, taken from the handoff, plus the handoff's next step, and waits for the word to carry on.
+A session started by `claude-dev cycle` states the same three, taken from the handoff, plus the handoff's next step, and carries on without waiting: the destination was approved before the cycle.
 
 ## The run
 
@@ -63,5 +63,5 @@ The human's reply to the review is a new destination on the same PR. Restate it 
 ## Composition with other skills
 
 - **`tdd`**: governs the work inside each commit. This skill governs the pacing between them.
-- **`mmmss-stride`**: the other rhythm. A task runs one of the two. When the human asks for strides mid-task, load `mmmss-stride` and follow it from the next commit.
+- **`mmmss-stride`**: the other rhythm. A task runs one of the two. When the human asks for strides mid-task, run `claude-dev task <slug> --stride` so cycled sessions keep them, then load `mmmss-stride` and follow it from the next commit.
 - **`feature-dev:feature-dev`** and other multi-step workflow skills: this skill sets the pacing when both are loaded.

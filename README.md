@@ -182,7 +182,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 | Command | |
 |---|---|
 | `claude-dev [--fresh] [folder]` | hub session: Claude pane + PR/CI status pane |
-| `claude-dev task <slug> [repo…]` | task window on `<repo>/.claude/worktrees/<slug>`; repos match by fragment (`be`, `fe`). Its Claude session has Remote Control on, named after the task |
+| `claude-dev task <slug> [--stride] [repo…]` | task window on `<repo>/.claude/worktrees/<slug>`; repos match by fragment (`be`, `fe`). Its Claude session has Remote Control on, named after the task. The task runs `until-pr` unless made with `--stride`, and a cycled session follows that rhythm |
 | `claude-dev ready [slug] [--note <text>]` | signal a green stride; flags it and pops its review |
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |

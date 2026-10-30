@@ -446,7 +446,7 @@ cmd_ready() {
   : > "$dir/$window.ready"
   # A previous review may have been popped and skipped; this is a new stride.
   rm -f "$dir/$window.popped"
-  [ -n "$page" ] && printf '%s\n' "$page" > "$dir/$window.page"
+  if [ -n "$page" ]; then printf '%s\n' "$page" > "$dir/$window.page"; else rm -f "$dir/$window.page"; fi
   # The context paragraph the review pane opens with. Written fresh per stride,
   # and *removed* when this stride ships without one — a note left over from the
   # previous stride would describe the wrong diff, which is worse than no note.

@@ -165,6 +165,16 @@ if grep -q 'display-popup' "$log"; then
   echo "FAIL: a held-back page replaces the review popup"; fails=$((fails + 1))
 fi
 
+# A stride signalled after the run has no page of its own: the last one would
+# show a stale review.
+fake_run "$both" ready my-task > /dev/null
+: > "$log"
+pop "$both" > /dev/null
+if grep -q 'xdg-open' "$log" || ! grep -q 'display-popup' "$log"; then
+  echo "FAIL: a later plain stride gets the popup, not the stale page — got: $(cat "$log")"
+  fails=$((fails + 1))
+fi
+
 rm -rf "$fake_dir" "$ws_parent"
 
 [ "$fails" -eq 0 ] && echo "pop-review: all assertions passed"

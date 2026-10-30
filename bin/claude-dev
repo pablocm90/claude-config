@@ -16,6 +16,10 @@
 #                                        signal a green stride: flag + auto-pop its
 #                                        review; the note becomes the review's
 #                                        opening context paragraph
+#   claude-dev ready [slug] --pr <n> --page <path>
+#                                        signal a finished until-pr run: desktop
+#                                        notification, then the visual review
+#                                        page opens on the task window
 #   claude-dev serve [slug] [--stop]     run this task's dev stack in its worktree
 #                                        panes, stopping every other one (a served
 #                                        task takes the workspace's ports over)
@@ -433,7 +437,7 @@ cmd_ready() {
       --note=*) have_note=1; note="${1#--note=}"; shift ;;
       --page)   page="${2:-}"; shift 2 || shift ;;
       --pr)     pr="${2:-}"; shift 2 || shift ;;
-      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -]" ;;
+      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -] [--pr <n> --page <path>]" ;;
       *)  slug="$1"; shift ;;
     esac
   done

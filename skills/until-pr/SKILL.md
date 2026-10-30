@@ -31,7 +31,7 @@ Repeat until the done criterion holds:
 2. Make it as *Inside a commit* and *Making the commit* say.
 3. Check the early stops. If none fires, go to 1.
 
-There is no `claude-dev ready` and no stop between commits. A choice that isn't the human's (naming, structure inside the destination, test shape) goes in the commit message's body with its reason, where the reviewer reads it.
+There is no stop between commits, and `claude-dev ready` runs only at the finish. A choice that isn't the human's (naming, structure inside the destination, test shape) goes in the commit message's body with its reason, where the reviewer reads it.
 
 The run is done when the done criterion you declared holds, observably.
 
@@ -53,7 +53,7 @@ After a merge, once context passes 150k tokens, when a context reminder arrives,
 When the done criterion holds:
 
 1. **Ship** as *Shipping* says: review subagents, pre-push gate, push, PR. A project's own pre-PR question (such as `seed-and-demo-data`) is the one stop at the finish.
-2. **Run the `visual-review` skill on the PR number.** Done when its page is open.
+2. **Run the `visual-review` skill on the PR number, through its notes step; leave the opening to `claude-dev`.** Then, when `claude-dev mode` answers, run `claude-dev ready --pr <n> --page <page path>`: it notifies the desktop and opens the page on the task window, now if the human is there, or when they next switch to it. Done when `ready` exits 0. When `mode` says *not in a task window*, open the page as `visual-review` does instead; done when the opener has returned.
 3. **Report and stop**: the PR link and one sentence on what it does. Then wait.
 
 ## Follow-up

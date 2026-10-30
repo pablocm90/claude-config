@@ -16,6 +16,10 @@
 #                                        signal a green stride: flag + auto-pop its
 #                                        review; the note becomes the review's
 #                                        opening context paragraph
+#   claude-dev ready [slug] --pr <n> --page <path>
+#                                        signal a finished until-pr run: desktop
+#                                        notification, then the visual review
+#                                        page opens on the task window
 #   claude-dev serve [slug] [--stop]     run this task's dev stack in its worktree
 #                                        panes, stopping every other one (a served
 #                                        task takes the workspace's ports over)
@@ -426,12 +430,14 @@ ctx_budget_warn() {
 # a window the human is not watching only arms the flag and says so on the
 # status line; pop_review delivers it when they switch to that window.
 cmd_ready() {
-  local slug="" note="" have_note=0
+  local slug="" note="" have_note=0 page="" pr=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --note)   have_note=1; note="${2:-}"; shift 2 || shift ;;
       --note=*) have_note=1; note="${1#--note=}"; shift ;;
-      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -]" ;;
+      --page)   page="${2:-}"; shift 2 || shift ;;
+      --pr)     pr="${2:-}"; shift 2 || shift ;;
+      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -] [--pr <n> --page <path>]" ;;
       *)  slug="$1"; shift ;;
     esac
   done
@@ -445,6 +451,7 @@ cmd_ready() {
   : > "$dir/$window.ready"
   # A previous review may have been popped and skipped; this is a new stride.
   rm -f "$dir/$window.popped"
+  if [ -n "$page" ]; then printf '%s\n' "$page" > "$dir/$window.page"; else rm -f "$dir/$window.page"; fi
   # The context paragraph the review pane opens with. Written fresh per stride,
   # and *removed* when this stride ships without one — a note left over from the
   # previous stride would describe the wrong diff, which is worse than no note.
@@ -455,12 +462,19 @@ cmd_ready() {
     rm -f "$dir/$window.context"
   fi
   echo "signalled review for '$window'"
+  # Sent even when the window is on screen: an active tmux window does not mean
+  # the human is at the desk.
+  local what="review"
+  if [ -n "$pr" ]; then
+    what="PR #$pr"
+    notify-send "$what ready for review" "$window" >/dev/null 2>&1 || true
+  fi
   [ -n "${TMUX:-}" ] || return 0
   local session; session=$(session_for "$root")
   if [ "$(tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null)" = "$window" ]; then
-    cmd_pop_review "$window"
+    cmd_pop_review "$window" || echo "armed: opens on the next switch to '$window'"
   else
-    tmux display-message -t "$session" "review ready in '$window'" 2>/dev/null || true
+    tmux display-message -t "$session" "$what ready in '$window'" 2>/dev/null || true
   fi
 }
 
@@ -502,6 +516,11 @@ cmd_pop_review() {
   # unseen — leave it armed for the next window switch.
   local client
   client=$(client_for_session "$(session_for "$root")") || return 1
+  if [ -f "$dir/$window.page" ]; then
+    xdg-open "$(cat "$dir/$window.page")" >/dev/null 2>&1 || return 1
+    : > "$dir/$window.popped"
+    return 0
+  fi
   : > "$dir/$window.popped"
   popup_review "$client" "$window" --stride
 }

@@ -57,31 +57,46 @@ cat > "$fake_dir/tmux" <<'FAKE'
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 case "$1" in
   list-clients) printf '%s\n' "$FAKE_TMUX_CLIENTS" ;;
+  display-message) [ "$2" = -p ] && printf '%s\n' "${FAKE_TMUX_WINDOW:-}" ;;
   show-environment) exit 1 ;;
 esac
 exit 0
 FAKE
-chmod +x "$fake_dir/tmux"
+cat > "$fake_dir/xdg-open" <<'FAKE'
+#!/usr/bin/env bash
+printf 'xdg-open %s\n' "$*" >> "$FAKE_TMUX_LOG"
+exit "${FAKE_XDG_STATUS:-0}"
+FAKE
+cat > "$fake_dir/notify-send" <<'FAKE'
+#!/usr/bin/env bash
+printf 'notify-send %s\n' "$*" >> "$FAKE_TMUX_LOG"
+exit 1   # as with no notification daemon running
+FAKE
+chmod +x "$fake_dir/tmux" "$fake_dir/xdg-open" "$fake_dir/notify-send"
 
 # session_for() derives the tmux session from the workspace basename, so the
 # workspace must be named for the session that owns it.
 ws_parent=$(mktemp -d); ws="$ws_parent/beta"; mkdir -p "$ws/.claude/reviews"
 log="$ws_parent/tmux.log"
 
-# Two workspaces open on one tmux server, each with its own attached terminal.
-pop() {
+# claude-dev inside the workspace, with the attached clients given first.
+fake_run() {
   (
     export PATH="$fake_dir:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$log" FAKE_TMUX_CLIENTS="$1"
     unset TMUX_PANE
-    CLAUDE_DEV_ROOT="$ws" bash "$CD" pop-review my-task >/dev/null 2>&1
+    CLAUDE_DEV_ROOT="$ws" bash "$CD" "${@:2}" >/dev/null 2>&1
     echo "$?"
   )
 }
 
+# Two workspaces open on one tmux server, each with its own attached terminal.
+both='/dev/pts/0 alpha
+/dev/pts/1 beta'
+pop() { fake_run "$1" pop-review my-task; }
+
 : > "$ws/.claude/reviews/my-task.ready"
 : > "$log"
-pop '/dev/pts/0 alpha
-/dev/pts/1 beta' > /dev/null
+pop "$both" > /dev/null
 popup_cmd=$(grep -m1 'display-popup' "$log" || true)
 popup_cmd=$(printf %s "$popup_cmd" | tr -d \\047)   # quoting is incidental; the client is not
 
@@ -102,6 +117,8 @@ case "$popup_cmd" in
      fails=$((fails + 1)) ;;
 esac
 
+assert_status "a delivered review does not pop on the next switch" "$(pop "$both")" 1
+
 # Nobody attached to this workspace: consuming the flag unseen loses the
 # review for good, so an undeliverable review stays armed.
 rm -f "$ws/.claude/reviews/my-task.popped"
@@ -117,13 +134,7 @@ fi
 # prefix + r asks for a review on demand. It runs through the same client
 # lookup: a key press knows its client, but the popup it builds does not.
 : > "$log"
-(
-  export PATH="$fake_dir:$PATH" TMUX=/tmp/fake,1,0 FAKE_TMUX_LOG="$log"
-  export FAKE_TMUX_CLIENTS='/dev/pts/0 alpha
-/dev/pts/1 beta'
-  unset TMUX_PANE
-  CLAUDE_DEV_ROOT="$ws" bash "$CD" review-popup my-task >/dev/null 2>&1
-)
+fake_run "$both" review-popup my-task > /dev/null
 on_demand=$(grep -m1 'display-popup' "$log" || true)
 on_demand=$(printf %s "$on_demand" | tr -d \\047)
 
@@ -142,6 +153,75 @@ case "$on_demand" in
   *--stride*) echo "FAIL: an on-demand review is not narrowed to a stride — got: $on_demand"
      fails=$((fails + 1)) ;;
 esac
+
+# --- a finished until-PR run --------------------------------------------------
+# The visual review page is built while the human may be on another window, so
+# its opening is held back like a popup and delivered on arrival instead.
+page="$ws_parent/visual-review.html"
+: > "$log"
+assert_status "a failed notification does not fail the finish" \
+  "$(fake_run "$both" ready my-task --pr 42 --page "$page")" 0
+# The human may be away from the terminal altogether.
+notice=$(grep -m1 '^notify-send' "$log" || true)
+case "$notice" in
+  *"#42"*my-task*) ;;
+  *) echo "FAIL: a finished run notifies the desktop with its PR and task — got: ${notice:-<no notification>}"
+     fails=$((fails + 1)) ;;
+esac
+# Off the window, the status line says which PR is waiting there.
+status_line=$(grep -m1 '^display-message -t beta ' "$log" || true)
+case "$status_line" in
+  *"PR #42"*my-task*) ;;
+  *) echo "FAIL: the status line names the ready PR — got: ${status_line:-<no status message>}"
+     fails=$((fails + 1)) ;;
+esac
+: > "$log"
+assert_status "a held-back page is due on arrival" "$(pop "$both")" 0
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: arriving opens the held-back page — got: $(cat "$log")"; fails=$((fails + 1)); }
+if grep -q 'display-popup' "$log"; then
+  echo "FAIL: a held-back page replaces the review popup"; fails=$((fails + 1))
+fi
+: > "$log"
+assert_status "a second switch has nothing left to open" "$(pop "$both")" 1
+if grep -q 'xdg-open' "$log"; then
+  echo "FAIL: a second switch does not reopen the page"; fails=$((fails + 1))
+fi
+
+# A stride signalled after the run has no page of its own: the last one would
+# show a stale review.
+fake_run "$both" ready my-task > /dev/null
+: > "$log"
+pop "$both" > /dev/null
+if grep -q 'xdg-open' "$log" || ! grep -q 'display-popup' "$log"; then
+  echo "FAIL: a later plain stride gets the popup, not the stale page — got: $(cat "$log")"
+  fails=$((fails + 1))
+fi
+
+# A page the browser failed to open was never seen: it waits for the next
+# switch instead of being used up.
+fake_run "$both" ready my-task --page "$page" > /dev/null
+(export FAKE_XDG_STATUS=1; pop "$both") > /dev/null
+: > "$log"
+assert_status "a page that failed to open is due again" "$(pop "$both")" 0
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: the next switch retries a page that failed to open — got: $(cat "$log")"; fails=$((fails + 1)); }
+
+# Finishing while the human watches the task window: no switch is coming, so
+# the page opens straight away.
+: > "$log"
+(export FAKE_TMUX_WINDOW=my-task; fake_run "$both" ready my-task --pr 43 --page "$page") > /dev/null
+grep -qx "xdg-open $page" "$log" ||
+  { echo "FAIL: finishing on the task window opens the page at once — got: $(cat "$log")"; fails=$((fails + 1)); }
+# Watching the window in tmux does not mean being at the desk.
+grep -q '^notify-send .*#43' "$log" ||
+  { echo "FAIL: finishing on the task window still notifies the desktop — got: $(cat "$log")"; fails=$((fails + 1)); }
+
+# The window can be current with nobody attached (driven over Remote
+# Control): the page is armed for the next switch, so the signal succeeded.
+assert_status "a finish with nobody attached still signals" \
+  "$(export FAKE_TMUX_WINDOW=my-task; fake_run '/dev/pts/0 alpha' ready my-task --page "$page")" 0
+
 rm -rf "$fake_dir" "$ws_parent"
 
 [ "$fails" -eq 0 ] && echo "pop-review: all assertions passed"

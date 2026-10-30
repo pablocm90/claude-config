@@ -118,7 +118,7 @@ the gitignored `plugins/`, so on a new machine confirm they resolved with
 | `gh`, authenticated | PR/CI status pane, `claude-dev prune` | those two commands |
 | `fuser` (psmisc) | `claude-dev serve` | serve cannot free its ports |
 | `delta` | review pager | falls back to a plain pager |
-| `xdg-open` | opening `--html` reports | report is written, not opened |
+| `xdg-open` | opening `--html` reports and a finished run's visual review page | report is written, not opened; the page stays armed |
 | `madge` | exact TypeScript graph in `--html` | falls back to grep heuristics |
 | `jq` | the statusline; `bin/install` reading and changing skill overrides | statusline prints nothing, install says so and carries on |
 
@@ -184,6 +184,7 @@ claude-dev prune                 # sweep clean worktrees whose PR is merged
 | `claude-dev [--fresh] [folder]` | hub session: Claude pane + PR/CI status pane |
 | `claude-dev task <slug> [--stride] [repo…]` | task window on `<repo>/.claude/worktrees/<slug>`; repos match by fragment (`be`, `fe`). Its Claude session has Remote Control on, named after the task. The task runs `until-pr` unless made with `--stride`, and a cycled session follows that rhythm |
 | `claude-dev ready [slug] [--note <text>]` | signal a green stride; flags it and pops its review |
+| `claude-dev ready [slug] --pr <n> --page <path>` | signal a finished `until-pr` run: a desktop notification, then the visual review page opens on the task window, at once or when you switch there |
 | `claude-dev serve [slug] [--stop]` | run this task's dev stack, stopping every other one |
 | `claude-dev serve-cmd [path]` / `serve-ports` | what serve would start, and on which ports |
 | `claude-dev mode` | this task window's rhythm, `until-pr` or `stride`; the context reminder asks it before telling an until-pr run to cycle itself past 150k |

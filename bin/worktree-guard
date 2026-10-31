@@ -148,7 +148,7 @@ done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
   { print }
   match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
-    $0 !~ /(^|[[:space:]])(bash|sh|zsh)([[:space:]]|$)/ {
+    $0 !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
     d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
   }
   END { printf "%s", held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')

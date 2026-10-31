@@ -197,10 +197,10 @@ heredoc_commit=$(printf "cd %s && git -C %s commit -F - <<'EOF'\nfix: stop git p
 assert_allowed "single repo: a heredoc body that mentions git" "$(guard_at "$repo" Bash "$heredoc_commit")"
 assert_blocked "single repo: committing in the main checkout after a heredoc" "$(guard_at "$repo" Bash "$heredoc_commit
 git commit -m x")"
-for opener in "bash <<'EOF'" "sh <<'EOF'" "zsh <<'EOF'" "cat <<'EOF' | bash"; do
+for opener in "bash <<'EOF'" "sh <<'EOF'" "zsh <<'EOF'" "cat <<'EOF' | bash" "cat <<'EOF'|bash"; do
   assert_blocked "single repo: a heredoc body run by a shell ($opener)" "$(guard_at "$repo" Bash "$(printf "%s\ngit commit -m x\nEOF" "$opener")")"
 done
-for opener in "cat > /tmp/run.sh <<'EOF'" "cat <<'EOF' > shell.txt"; do
+for opener in "cat > /tmp/run.sh <<'EOF'" "cat <<'EOF' > shell.txt" "gh issue create --title fresh --body-file - <<'EOF'"; do
   assert_allowed "single repo: a heredoc body written to a file ($opener)" "$(guard_at "$repo" Bash "$(printf "%s\ngit commit -m x\nEOF" "$opener")")"
 done
 assert_blocked "single repo: a heredoc that never closes hides nothing" "$(guard_at "$repo" Bash "$(printf "cat <<'EOF'\ngit commit -m x")")"

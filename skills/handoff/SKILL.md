@@ -1,6 +1,7 @@
 ---
 name: handoff
 description: End-of-cycle session handoff — flush durable knowledge to memory/plan/PR, write a compact handoff file for the task, and hand the user a one-command restart (claude-dev cycle). Use after a deploy/merge, when a session's context passes 150k tokens, or when the user says "handoff", "cycle", "fresh session/chat", "wrap up this session".
+effort: low
 ---
 
 # Session Handoff (cycle)

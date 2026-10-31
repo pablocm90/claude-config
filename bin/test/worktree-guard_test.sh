@@ -208,5 +208,20 @@ assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash 
 assert_allowed "single repo: reading from the main checkout" "$(guard_at "$repo" Bash "git log --oneline -3")"
 rm -rf "$repo"
 
+# --- A single repo whose name other repos' paths share --------------------
+# ~/.claude is such a root: every repo has a .claude directory, and a write to
+# one is not a write to the root's main checkout.
+base=$(mktemp -d)
+repo="$base/.claude"
+mkdir -p "$repo" "$base/other/.claude/hooks"
+git -C "$repo" init -q
+git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$repo" worktree add -q -b "$SLUG" "$repo/.claude/worktrees/$SLUG" >/dev/null 2>&1
+assert_allowed "repo named like a shared dir: a relative write in another repo" "$(guard_at "$repo" Bash "git -C $base/other rm .claude/hooks/x.sh")"
+assert_allowed "repo named like a shared dir: an absolute write in another repo" "$(guard_at "$repo" Bash "rm $base/other/.claude/hooks/x.sh")"
+assert_blocked "repo named like a shared dir: an absolute write in its main checkout" "$(guard_at "$repo" Bash "rm $repo/bin/x")"
+assert_blocked "repo named like a shared dir: a write in its main checkout through ~" "$(HOME=$base guard_at "$repo" Bash 'rm ~/.claude/bin/x')"
+rm -rf "$base"
+
 [ "$fails" -eq 0 ] && echo "worktree-guard: all assertions passed"
 exit "$fails"

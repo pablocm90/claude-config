@@ -70,18 +70,19 @@ targets_main() {
     tok="${tok//[\"\']/}"
     tok="${tok#*=}"
     tok="${tok#./}"
+    tok="${tok/#\~/$HOME}"
     for repo in "${REPOS[@]}"; do
+      case "$tok" in "$repo" | "$repo"/*) return 0 ;; esac
+      # The root's own name heads no path written from the root, and other
+      # repos share it when it is a common one such as .claude.
+      [ "$repo" = "$root" ] && continue
       name=$(basename "$repo")
       # Written as a path from the workspace root: the bare repo name heads it.
       case "$tok" in "$name" | "$name"/*) return 0 ;; esac
-      # Rooted somewhere else, so the name may sit deeper in the path. Only
-      # tokens shaped like paths qualify — a bare word with a slash in it is
-      # as likely to be `acme/acme-backend`, which addresses GitHub.
-      case "$tok" in
-        /* | \~* | \$*)
-          case "$tok" in */"$name" | */"$name"/*) return 0 ;; esac
-          ;;
-      esac
+      # Rooted in a variable the guard cannot resolve, so the name may sit
+      # deeper in the path. A bare word with a slash in it is as likely to be
+      # `acme/acme-backend`, which addresses GitHub.
+      case "$tok" in \$*/"$name" | \$*/"$name"/*) return 0 ;; esac
     done
   done
   return 1

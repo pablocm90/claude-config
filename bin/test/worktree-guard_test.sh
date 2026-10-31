@@ -180,6 +180,7 @@ assert_blocked "single repo: edit in the main checkout" "$(guard_at "$repo" Edit
 assert_allowed "single repo: edit in this window's worktree" "$(guard_at "$repo" Edit "$wt/src/app.ts")"
 # The handoff lives in the main checkout's .claude/handoffs, ignored by git.
 assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Write "$repo/.claude/handoffs/$SLUG.md")"
+assert_allowed "single repo: redirecting into the ignored handoffs" "$(guard_at "$repo" Bash "git diff > $repo/.claude/handoffs/$SLUG.patch")"
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
 assert_blocked "single repo: committing from the main checkout" "$(guard_at "$repo/src" Bash "git commit -m x")"
 assert_allowed "single repo: committing from the worktree" "$(guard_at "$wt" Bash "git commit -m x")"
@@ -192,6 +193,17 @@ assert_allowed "single repo: git aimed at a worktree with -C" "$(guard_at "$repo
 assert_allowed "single repo: moving into the worktree through a variable" "$(guard_at "$repo" Bash 'cd "$WT" && git commit -m x')"
 assert_allowed "single repo: a PR title that mentions git" "$(guard_at "$repo" Bash 'gh pr create --title "Block git add in main"')"
 assert_allowed "single repo: a commit-message line that mentions git" "$(guard_at "$repo" Bash 'Stop the git push from main')"
+heredoc_commit=$(printf "cd %s && git -C %s commit -F - <<'EOF'\nfix: stop git push from main\nEOF" "$repo" "$wt")
+assert_allowed "single repo: a heredoc body that mentions git" "$(guard_at "$repo" Bash "$heredoc_commit")"
+assert_blocked "single repo: committing in the main checkout after a heredoc" "$(guard_at "$repo" Bash "$heredoc_commit
+git commit -m x")"
+for opener in "bash <<'EOF'" "sh <<'EOF'" "zsh <<'EOF'" "cat <<'EOF' | bash" "cat <<'EOF'|bash"; do
+  assert_blocked "single repo: a heredoc body run by a shell ($opener)" "$(guard_at "$repo" Bash "$(printf "%s\ngit commit -m x\nEOF" "$opener")")"
+done
+for opener in "cat > /tmp/run.sh <<'EOF'" "cat <<'EOF' > shell.txt" "gh issue create --title fresh --body-file - <<'EOF'"; do
+  assert_allowed "single repo: a heredoc body written to a file ($opener)" "$(guard_at "$repo" Bash "$(printf "%s\ngit commit -m x\nEOF" "$opener")")"
+done
+assert_blocked "single repo: a heredoc that never closes hides nothing" "$(guard_at "$repo" Bash "$(printf "cat <<'EOF'\ngit commit -m x")")"
 assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash "mkdir -p /tmp/scratch-x")"
 assert_allowed "single repo: reading from the main checkout" "$(guard_at "$repo" Bash "git log --oneline -3")"
 rm -rf "$repo"

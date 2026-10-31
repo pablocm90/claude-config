@@ -33,13 +33,21 @@ done
 
 deny() { printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n' "$1" "$2" >&2; exit 2; }
 
+ignored() {
+  local repo
+  for repo in "${REPOS[@]}"; do
+    git -C "$repo" check-ignore -q "$1" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 if [ "$tool" != Bash ]; then
   file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
   [ -n "$file" ] || exit 0
   for i in "${!REPOS[@]}"; do
     case "$file" in
       "${REPOS[i]}"/.claude/worktrees/*) exit 0 ;;
-      "${REPOS[i]}"/*) git -C "${REPOS[i]}" check-ignore -q "$file" && exit 0
+      "${REPOS[i]}"/*) ignored "$file" && exit 0
         deny "$file is in the main checkout of $(basename "${REPOS[i]}")." \
         "${WTS[i]}/${file#"${REPOS[i]}"/}" ;;
     esac
@@ -101,7 +109,7 @@ mutates() {
   if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
     case "${BASH_REMATCH[1]}" in
       /dev/* | \&*) ;;
-      /*) targets_main "${BASH_REMATCH[1]}" && return 0 ;;
+      /*) targets_main "${BASH_REMATCH[1]}" && ! ignored "${BASH_REMATCH[1]}" && return 0 ;;
       *) return 0 ;;
     esac
   fi
@@ -136,5 +144,12 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` runs git in a main checkout." "${WTS[0]}"
   { [ "$in_main" = 1 ] || targets_main "$seg"; } || continue
   mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}"
-done < <(printf '%s' "$cmd" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
+done < <(printf '%s' "$cmd" | awk '
+  d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
+  { print }
+  match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
+    $0 !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
+    d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
+  }
+  END { printf "%s", held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
 exit 0

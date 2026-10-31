@@ -1,5 +1,6 @@
 ---
 description: Write the task handoff and respawn this pane with a fresh Claude session
+effort: low
 ---
 
 Task window: !`tmux display-message -p -t "$TMUX_PANE" '#W' 2>/dev/null || echo '(not in tmux)'`

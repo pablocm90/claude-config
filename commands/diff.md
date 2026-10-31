@@ -4,6 +4,7 @@ allowed-tools: Bash(git:*), Bash(ls:*), Bash(basename:*), Bash(printf:*), Bash(b
 context: fork
 model: haiku
 background: false
+effort: low
 ---
 
 Working-tree status across all git repos under `$PWD`:

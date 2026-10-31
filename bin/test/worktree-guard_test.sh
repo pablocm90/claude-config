@@ -192,6 +192,10 @@ assert_allowed "single repo: git aimed at a worktree with -C" "$(guard_at "$repo
 assert_allowed "single repo: moving into the worktree through a variable" "$(guard_at "$repo" Bash 'cd "$WT" && git commit -m x')"
 assert_allowed "single repo: a PR title that mentions git" "$(guard_at "$repo" Bash 'gh pr create --title "Block git add in main"')"
 assert_allowed "single repo: a commit-message line that mentions git" "$(guard_at "$repo" Bash 'Stop the git push from main')"
+heredoc_commit=$(printf "cd %s && git -C %s commit -F - <<'EOF'\nfix: stop git push from main\nEOF" "$repo" "$wt")
+assert_allowed "single repo: a heredoc body that mentions git" "$(guard_at "$repo" Bash "$heredoc_commit")"
+assert_blocked "single repo: committing in the main checkout after a heredoc" "$(guard_at "$repo" Bash "$heredoc_commit
+git commit -m x")"
 assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash "mkdir -p /tmp/scratch-x")"
 assert_allowed "single repo: reading from the main checkout" "$(guard_at "$repo" Bash "git log --oneline -3")"
 rm -rf "$repo"

@@ -136,5 +136,10 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` runs git in a main checkout." "${WTS[0]}"
   { [ "$in_main" = 1 ] || targets_main "$seg"; } || continue
   mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}"
-done < <(printf '%s' "$cmd" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
+done < <(printf '%s' "$cmd" | awk '
+  d != "" { if ($0 == d) d = ""; next }
+  { print }
+  match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) {
+    d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
+  }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
 exit 0

@@ -1,6 +1,7 @@
 ---
 description: Pull merged PR on main, create new branch, update plan, and continue work
 allowed-tools: Read, Edit, Bash(git:*), Bash(gh:*)
+effort: low
 ---
 
 Current branch state:

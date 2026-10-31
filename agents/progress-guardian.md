@@ -5,6 +5,7 @@ description: >
 tools: Read, Edit, Grep, Glob, Bash
 model: sonnet
 color: green
+effort: low
 ---
 
 # Progress Guardian

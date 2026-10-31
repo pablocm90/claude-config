@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# PreToolUse hook: refuse a write into a product main checkout when this task
+# window owns a worktree for that repo.
+#
+# The agent pane's cwd is claude-dev's root: a workspace of repos, or a single
+# repo's main checkout. Either way the main checkout is what a half-specified
+# path, a bare repo name or a bare git command resolves to. task-context states
+# the right target at session start; this refuses the wrong one when that
+# notice has faded. Reads are never blocked — probing master is legitimate —
+# and neither are git-ignored paths such as the task's handoff.
+set -uo pipefail
+
+input=$(cat)
+tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null)
+case "$tool" in Bash | Write | Edit | NotebookEdit) ;; *) exit 0 ;; esac
+
+root="${CLAUDE_PROJECT_DIR:-$PWD}"
+slug="${CLAUDE_TASK_SLUG-}"
+if [ -z "$slug" ] && [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
+  slug=$(tmux display-message -p -t "$TMUX_PANE" '#W' 2>/dev/null)
+fi
+[ -n "$slug" ] && [ "$slug" != hub ] || exit 0
+
+# Only repos where this window owns a worktree: blocking a repo with no
+# alternative checkout would leave nowhere to work.
+REPOS=() WTS=()
+for repo in "$root"/ "$root"/*/; do
+  repo="${repo%/}"
+  [ -d "$repo/.claude/worktrees/$slug" ] || continue
+  REPOS+=("$repo") WTS+=("$repo/.claude/worktrees/$slug")
+done
+[ "${#REPOS[@]}" -gt 0 ] || exit 0
+
+deny() { printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n' "$1" "$2" >&2; exit 2; }
+
+if [ "$tool" != Bash ]; then
+  file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+  [ -n "$file" ] || exit 0
+  for i in "${!REPOS[@]}"; do
+    case "$file" in
+      "${REPOS[i]}"/.claude/worktrees/*) exit 0 ;;
+      "${REPOS[i]}"/*) git -C "${REPOS[i]}" check-ignore -q "$file" && exit 0
+        deny "$file is in the main checkout of $(basename "${REPOS[i]}")." \
+        "${WTS[i]}/${file#"${REPOS[i]}"/}" ;;
+    esac
+  done
+  exit 0
+fi
+
+# A segment pointing a path at a protected repo, or running under a cwd inside
+# one, is aimed at the main checkout. Only mutating segments are refused.
+#
+# The repo name has to sit at the head of a token to count. It shows up in
+# plenty of things that are not paths — `--repo acme/acme-backend`, a
+# commit message, the replacement half of a sed script — and treating those as
+# writes refuses commands that never touch the checkout.
+targets_main() {
+  local seg="$1" repo name tok
+  local -a toks
+  IFS=$' \t' read -ra toks <<<"$seg"
+  for tok in "${toks[@]}"; do
+    tok="${tok//[\"\']/}"
+    tok="${tok#*=}"
+    tok="${tok#./}"
+    for repo in "${REPOS[@]}"; do
+      name=$(basename "$repo")
+      # Written as a path from the workspace root: the bare repo name heads it.
+      case "$tok" in "$name" | "$name"/*) return 0 ;; esac
+      # Rooted somewhere else, so the name may sit deeper in the path. Only
+      # tokens shaped like paths qualify — a bare word with a slash in it is
+      # as likely to be `acme/acme-backend`, which addresses GitHub.
+      case "$tok" in
+        /* | \~* | \$*)
+          case "$tok" in */"$name" | */"$name"/*) return 0 ;; esac
+          ;;
+      esac
+    done
+  done
+  return 1
+}
+
+git_mutates() {
+  [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
+    [[ "$1" =~ (^|[[:space:]])(commit|add|checkout|switch|merge|rebase|reset|revert|push|stash|cherry-pick|apply|restore|clean)([[:space:]]|$) ]]
+}
+
+mutates() {
+  local seg="$1"
+  git_mutates "$seg" && return 0
+  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] && return 0
+  # For a copy or move only the destination is a write: reading a file out of
+  # the main checkout is legitimate.
+  if [[ "$seg" =~ (^|[[:space:]])(cp|mv|ln|install)([[:space:]]|$) ]]; then
+    { [ "$in_main" = 1 ] || targets_main "${seg##* }"; } && return 0
+    return 1
+  fi
+  [[ "$seg" =~ (^|[[:space:]])(rm|mkdir|touch|chmod|tee|truncate|dd)([[:space:]]|$) ]] && return 0
+  # A redirect is a write, but only where it lands. An absolute destination
+  # says for itself whether it is in the checkout; a relative one resolves
+  # against a cwd this segment has already been judged to be main.
+  if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
+    case "${BASH_REMATCH[1]}" in
+      /dev/* | \&*) ;;
+      /*) targets_main "${BASH_REMATCH[1]}" && return 0 ;;
+      *) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
+[ -n "$cmd" ] || exit 0
+in_main=0
+cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+cwd_main=0
+for repo in "${REPOS[@]}"; do
+  case "$cwd/" in "$repo"/.claude/worktrees/*) ;; "$repo"/*) cwd_main=1 ;; esac
+done
+while IFS= read -r seg || [ -n "$seg" ]; do
+  [ -n "${seg//[[:space:]]/}" ] || continue
+
+  if [[ "$seg" =~ ^[[:space:]]*cd[[:space:]]+([^[:space:]]+) ]]; then
+    target="${BASH_REMATCH[1]//[\"\']/}"
+    in_main=0
+    case "$target" in /* | *.claude/worktrees/*) cwd_main=0 ;; esac
+    case "$target" in */.claude/worktrees/*) continue ;; esac
+    targets_main "$target" && in_main=1
+    continue
+  fi
+
+  case "$seg" in *"/.claude/worktrees/$slug"*) continue ;; esac
+  # Cutting another task's worktree where the conventions put it writes git's
+  # worktree metadata, never the main checkout's files.
+  [[ "$seg" =~ (^|[[:space:]])worktree[[:space:]]+add[[:space:]](.*[[:space:]])?([^[:space:]]*/)?\.claude/worktrees/ ]] && continue
+  [ "$cwd_main" = 1 ] && ! [[ "$seg" =~ (^|[[:space:]])git[[:space:]]+-C[[:space:]] ]] && git_mutates "$seg" &&
+    deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` runs git in a main checkout." "${WTS[0]}"
+  { [ "$in_main" = 1 ] || targets_main "$seg"; } || continue
+  mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}"
+done < <(printf '%s' "$cmd" | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
+exit 0

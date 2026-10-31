@@ -104,6 +104,13 @@ default_base() {
   git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/master
 }
 
+exclude_locally() {
+  local ex
+  ex=$(git -C "$1" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null) || return 0
+  grep -qxF "$2" "$ex" 2>/dev/null && return 0
+  printf '%s\n' "$2" >> "$ex"
+}
+
 ensure_worktree() {
   local repo="$1" slug="$2" branch="$3" wt base
   wt="$repo/.claude/worktrees/$slug"
@@ -114,6 +121,7 @@ ensure_worktree() {
   git -C "$repo" fetch -q origin
   base=$(default_base "$repo")
   mkdir -p "$repo/.claude/worktrees"
+  exclude_locally "$repo" .claude/worktrees/
   if git -C "$repo" show-ref --verify -q "refs/heads/$branch"; then
     git -C "$repo" worktree add -q "$wt" "$branch"
   elif git -C "$repo" show-ref --verify -q "refs/remotes/origin/$branch"; then
@@ -219,6 +227,7 @@ cmd_task() {
 
   local root; root=$(resolve_root)
   local session; session=$(session_for "$root")
+  exclude_locally "$root" .claude/handoffs/
   tmux has-session -t "$session" 2>/dev/null || die "no session '$session' — run claude-dev first"
 
   if [ "$stride" -eq 1 ]; then

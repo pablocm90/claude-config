@@ -36,6 +36,29 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/bin/task-context",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/bin/worktree-guard",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {

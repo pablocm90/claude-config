@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# SessionStart hook: pin the session to the worktrees its task window owns.
+#
+# The agent pane's cwd is claude-dev's root (a workspace, or a single repo's
+# main checkout), so every relative path and every
+# bare git command lands in the main checkout instead of the task worktree.
+# Resolving the window name to real paths up front removes the guess.
+set -uo pipefail
+
+root="${CLAUDE_PROJECT_DIR:-$PWD}"
+
+slug="${CLAUDE_TASK_SLUG-}"
+if [ -z "$slug" ] && [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
+  slug=$(tmux display-message -p -t "$TMUX_PANE" '#W' 2>/dev/null)
+fi
+[ -n "$slug" ] && [ "$slug" != hub ] || exit 0
+
+worktrees=""
+for repo in "$root"/ "$root"/*/; do
+  wt="${repo}.claude/worktrees/$slug"
+  [ -d "$wt" ] || continue
+  branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null) || continue
+  worktrees+="  $(basename "${repo%/}"): $wt (branch: $branch)"$'\n'
+done
+[ -n "$worktrees" ] || exit 0
+
+command -v jq >/dev/null 2>&1 || exit 0
+jq -n --arg c "Task window \"$slug\" owns these worktrees:
+
+$worktrees
+Every read, edit, test run and git command for this task targets those paths:
+\`git -C <worktree>\`, absolute worktree paths in Edit/Write. The main checkouts
+under $root sit on a different branch — committing there is the failure mode
+this notice exists to prevent. A branch that differs from the slug above is the
+real branch; use it, don't correct it." \
+  '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'

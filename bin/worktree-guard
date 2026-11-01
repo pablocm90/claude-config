@@ -36,7 +36,7 @@ deny() { printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n'
 ignored() {
   local repo
   for repo in "${REPOS[@]}"; do
-    git -C "$repo" check-ignore -q "$1" 2>/dev/null && return 0
+    git -C "$repo" check-ignore "$1" "$1/" >/dev/null 2>&1 && return 0
   done
   return 1
 }
@@ -72,7 +72,7 @@ targets_main() {
     tok="${tok#./}"
     tok="${tok/#\~/$HOME}"
     for repo in "${REPOS[@]}"; do
-      case "$tok" in "$repo" | "$repo"/*) return 0 ;; esac
+      case "$tok" in "$repo" | "$repo"/*) ignored "$tok" || return 0 ;; esac
       # The root's own name heads no path written from the root, and other
       # repos share it when it is a common one such as .claude.
       [ "$repo" = "$root" ] && continue
@@ -110,7 +110,7 @@ mutates() {
   if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
     case "${BASH_REMATCH[1]}" in
       /dev/* | \&*) ;;
-      /*) targets_main "${BASH_REMATCH[1]}" && ! ignored "${BASH_REMATCH[1]}" && return 0 ;;
+      /*) targets_main "${BASH_REMATCH[1]}" && return 0 ;;
       *) return 0 ;;
     esac
   fi

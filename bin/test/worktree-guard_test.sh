@@ -187,6 +187,10 @@ echo build/ >> "$repo/.git/info/exclude"
 touch "$repo/build"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "rm $repo/build")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
+# The exemption covers where a write lands, not where a command runs from or what it moves away.
+for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
+  assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
 # After a merge the main checkout goes back to the default branch and pulls.
 for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do

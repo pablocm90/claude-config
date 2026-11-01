@@ -230,8 +230,8 @@ cmd_task() {
   exclude_locally "$root" .claude/handoffs/
   tmux has-session -t "$session" 2>/dev/null || die "no session '$session' — run claude-dev first"
 
+  mkdir -p "$root/.claude/handoffs"
   if [ "$stride" -eq 1 ]; then
-    mkdir -p "$root/.claude/handoffs"
     touch "$(stride_marker "$root" "$window")"
   fi
 

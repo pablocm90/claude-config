@@ -30,6 +30,10 @@ untracked=$(git -C "$repo" status --porcelain --untracked-files=all)
   { echo "FAIL: a task's worktree and handoff folders stay out of git status — got: $untracked"; fails=$((fails + 1)); }
 [ "$(grep -c . "$repo/.git/info/exclude")" = "$(sort -u "$repo/.git/info/exclude" | grep -c .)" ] ||
   { echo "FAIL: a second task adds no duplicate exclude lines"; fails=$((fails + 1)); }
+rm -rf "$repo/.claude/handoffs"
+task plain
+[ -d "$repo/.claude/handoffs" ] ||
+  { echo "FAIL: a task without --stride still has a handoffs folder to write into"; fails=$((fails + 1)); }
 rm -rf "$tmp" "$bin"
 
 [ "$fails" -eq 0 ] && echo "task-excludes: all assertions passed"

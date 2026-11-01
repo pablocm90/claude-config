@@ -166,6 +166,7 @@ git -C "$repo" init -q
 git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$repo" worktree add -q -b "$SLUG" "$repo/.claude/worktrees/$SLUG" >/dev/null 2>&1
 echo .claude/handoffs/ >> "$repo/.git/info/exclude"
+mkdir -p "$repo/.claude/handoffs"
 wt="$repo/.claude/worktrees/$SLUG"
 
 guard_at() {
@@ -183,9 +184,8 @@ assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Wr
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
-echo build/ >> "$repo/.git/info/exclude"
-touch "$repo/build"
-assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "rm $repo/build")"
+echo dist/ >> "$repo/.git/info/exclude"
+assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
 # The exemption covers where a write lands, not where a command runs from or what it moves away.
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do

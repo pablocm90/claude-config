@@ -192,7 +192,7 @@ assert_blocked "single repo: branching off from the main checkout" "$(guard_at "
 for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do
   assert_allowed "single repo: returning the main checkout to its default branch ($sync)" "$(guard_at "$repo" Bash "$sync")"
 done
-for write in "git checkout main -- src/app.ts" "git switch -c main" "git switch feature"; do
+for write in "git checkout main -- src/app.ts" "git switch -c main" "git switch feature" "git commit -am x & git switch main" "git commit -m x # checkout main"; do
   assert_blocked "single repo: anything but returning to the default branch ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 assert_blocked "single repo: committing from the main checkout" "$(guard_at "$repo/src" Bash "git commit -m x")"

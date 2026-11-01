@@ -183,6 +183,9 @@ assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Wr
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+echo build/ >> "$repo/.git/info/exclude"
+touch "$repo/build"
+assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "rm $repo/build")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
 # After a merge the main checkout goes back to the default branch and pulls.

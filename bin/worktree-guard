@@ -34,9 +34,10 @@ done
 deny() { printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n' "$1" "$2" >&2; exit 2; }
 
 ignored() {
-  local repo
+  local repo as_dir="$1/"
+  [ -f "$1" ] && as_dir="$1"
   for repo in "${REPOS[@]}"; do
-    git -C "$repo" check-ignore "$1" "$1/" >/dev/null 2>&1 && return 0
+    git -C "$repo" check-ignore "$1" "$as_dir" >/dev/null 2>&1 && return 0
   done
   return 1
 }

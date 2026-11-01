@@ -89,6 +89,7 @@ targets_main() {
 }
 
 git_mutates() {
+  [[ "$1" =~ (checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
     [[ "$1" =~ (^|[[:space:]])(commit|add|checkout|switch|merge|rebase|reset|revert|push|stash|cherry-pick|apply|restore|clean)([[:space:]]|$) ]]
 }

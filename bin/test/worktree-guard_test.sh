@@ -185,6 +185,13 @@ for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.cl
 done
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
+# After a merge the main checkout goes back to the default branch and pulls.
+for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do
+  assert_allowed "single repo: returning the main checkout to its default branch ($sync)" "$(guard_at "$repo" Bash "$sync")"
+done
+for write in "git checkout main -- src/app.ts" "git switch -c main" "git switch feature"; do
+  assert_blocked "single repo: anything but returning to the default branch ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 assert_blocked "single repo: committing from the main checkout" "$(guard_at "$repo/src" Bash "git commit -m x")"
 assert_allowed "single repo: committing from the worktree" "$(guard_at "$wt" Bash "git commit -m x")"
 assert_allowed "single repo: moving into the worktree first" "$(guard_at "$repo" Bash "cd $wt && git commit -m x")"

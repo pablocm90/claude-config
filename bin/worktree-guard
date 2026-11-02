@@ -113,7 +113,7 @@ edits_only_ignored() {
     [[ "$tok" =~ ^\'[^\']*\'$ ]] || ! shell_expands "$tok" || return 1
     tok="${tok//[\"\']/}"
     # A backup suffix writes <file><suffix>, which the ignore rule need not cover.
-    [[ "$tok" =~ ^-[^-]*i. || "$tok" == --in*=* ]] && return 1
+    [[ "$tok" =~ ^-[^-]*i. || "$tok" == --i*=* ]] && return 1
     case "$tok" in /*) path="$tok" ;; *) path="$base/$tok" ;; esac
     [ -e "$path" ] || continue
     ignored "$path" || return 1
@@ -131,7 +131,7 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[^-[:space:]]*i|--in) ]] &&
+  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[^-[:space:]]*i|--i) ]] &&
     ! edits_only_ignored "$seg" && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.

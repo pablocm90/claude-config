@@ -181,12 +181,13 @@ assert_blocked "single repo: edit in the main checkout" "$(guard_at "$repo" Edit
 assert_allowed "single repo: edit in this window's worktree" "$(guard_at "$repo" Edit "$wt/src/app.ts")"
 # The handoff lives in the main checkout's .claude/handoffs, ignored by git.
 assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Write "$repo/.claude/handoffs/$SLUG.md")"
-for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md"; do
+for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
+assert_blocked "single repo: an in-place edit of a tracked file by a relative path after cd" "$(guard_at "$repo" Bash "cd $repo && sed -i s/a/b/ src/app.ts")"
 # The exemption covers where a write lands, not where a command runs from or what it moves away.
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
   assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"

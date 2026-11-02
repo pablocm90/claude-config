@@ -97,7 +97,8 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] && return 0
+  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] &&
+    { [ "$in_main" = 1 ] || targets_main "$seg" writes; } && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.
   if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then

@@ -184,6 +184,9 @@ assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Wr
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md"; do
+  assert_allowed "single repo: a relative write into the ignored handoffs after cd ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"

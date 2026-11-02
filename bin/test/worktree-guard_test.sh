@@ -272,6 +272,8 @@ assert_allowed "repo named like a shared dir: a relative write in another repo" 
 assert_allowed "repo named like a shared dir: an absolute write in another repo" "$(guard_at "$repo" Bash "rm $base/other/.claude/hooks/x.sh")"
 assert_blocked "repo named like a shared dir: an absolute write in its main checkout" "$(guard_at "$repo" Bash "rm $repo/bin/x")"
 assert_blocked "repo named like a shared dir: a write in its main checkout through ~" "$(HOME=$base guard_at "$repo" Bash 'rm ~/.claude/bin/x')"
+echo /.claude/handoffs/ >> "$repo/.git/info/exclude"
+assert_allowed "repo named like a shared dir: an ignored write after cd through ~" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && cat >> .claude/handoffs/x.md')"
 assert_blocked "repo named like a shared dir: an in-place edit after a cd the guard cannot resolve" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && sed -i s/a/b/ bin/x')"
 rm -rf "$base"
 

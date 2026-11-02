@@ -203,7 +203,7 @@ for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .
   assert_blocked "single repo: an in-place edit of a tracked file after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 # The shell expands a glob or a variable into files the guard never sees named.
-for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts'; do
+for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts' "'src/'*'.ts'"; do
   write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"
   assert_blocked "single repo: an in-place edit through a shell expansion after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done

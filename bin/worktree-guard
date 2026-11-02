@@ -37,8 +37,14 @@ deny() {
   exit 2
 }
 
+# The shell expands these into files the guard never sees named.
+shell_expands() {
+  [[ "$1" == *[\*\?\[\{\$\`~\\]* ]]
+}
+
 ignored() {
   local repo
+  ! shell_expands "$1" || return 1
   for repo in "${REPOS[@]}"; do
     git -C "$repo" check-ignore -q "$1" 2>/dev/null && return 0
   done
@@ -102,8 +108,7 @@ edits_only_ignored() {
   [ "$in_main" = 0 ] || base="$target"
   IFS=$' \t' read -ra toks <<<"$1"
   for tok in "${toks[@]}"; do
-  true
-    [[ "$tok" =~ ^\'[^\']*\'$ ]] || [[ "$tok" != *[\*\?\[\{\$\`~\\]* ]] || return 1
+    [[ "$tok" =~ ^\'[^\']*\'$ ]] || ! shell_expands "$tok" || return 1
     tok="${tok//[\"\']/}"
     case "$tok" in /*) path="$tok" ;; *) path="$base/$tok" ;; esac
     [ -e "$path" ] || continue

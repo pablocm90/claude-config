@@ -207,6 +207,9 @@ for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`ec
   write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"
   assert_blocked "single repo: an in-place edit through a shell expansion after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+for write in "cd $repo && cat >> .claude/handoffs/\$F" "cat >> $repo/.claude/handoffs/\$F" "rm $repo/.claude/handoffs/\$F"; do
+  assert_blocked "single repo: a write under an ignored path through a shell expansion ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md 2> src/app.ts" "cat > $repo/.claude/handoffs/$SLUG.md 2> $repo/src/app.ts"; do
   assert_blocked "single repo: a redirect into a tracked file after one into the handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done

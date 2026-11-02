@@ -31,14 +31,30 @@ for repo in "$root"/ "$root"/*/; do
 done
 [ "${#REPOS[@]}" -gt 0 ] || exit 0
 
-deny() { printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n' "$1" "$2" >&2; exit 2; }
+deny() {
+  printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n%s' "$1" "$2" "${3-}" >&2
+  exit 2
+}
 
-ignored() {
-  local repo
+# The shell expands these into files the guard never sees named.
+shell_expands() {
+  [[ "$1" == *[\*\?\[\{\$\`~\\]* ]]
+}
+
+# Only the repo holding the path decides: a root that ignores a nested repo
+# says nothing about that repo's files. The root comes first, so the last
+# repo holding the path is the deepest.
+ignored_literally() {
+  local repo owner=
   for repo in "${REPOS[@]}"; do
-    git -C "$repo" check-ignore -q "$1" 2>/dev/null && return 0
+    case "$1" in "$repo"/*) owner="$repo" ;; esac
   done
-  return 1
+  git -C "$owner" check-ignore -q "$1" 2>/dev/null
+}
+
+# A shell path is judged only when the shell would not expand it.
+ignored() {
+  ! shell_expands "$1" && ignored_literally "$1"
 }
 
 if [ "$tool" != Bash ]; then
@@ -47,7 +63,7 @@ if [ "$tool" != Bash ]; then
   for i in "${!REPOS[@]}"; do
     case "$file" in
       "${REPOS[i]}"/.claude/worktrees/*) exit 0 ;;
-      "${REPOS[i]}"/*) ignored "$file" && exit 0
+      "${REPOS[i]}"/*) ignored_literally "$file" && exit 0
         deny "$file is in the main checkout of $(basename "${REPOS[i]}")." \
         "${WTS[i]}/${file#"${REPOS[i]}"/}" ;;
     esac
@@ -88,6 +104,42 @@ targets_main() {
   return 1
 }
 
+# A quoted word may hold spaces: it stays open until its quote closes.
+in_quote() {
+  local s="$1" q= i c
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    [ -n "$q" ] && { [ "$c" != "$q" ] || q=; continue; }
+    [[ "$c" == [\"\'] ]] && q="$c"
+  done
+  [ -n "$q" ]
+}
+
+# sed -i edits only files that already exist, so the tokens naming one under
+# the cd target, or the pane's cwd without one, are the files it writes.
+# Nothing found there means the target could not be resolved, and the write
+# is refused.
+edits_only_ignored() {
+  local tok word= path seen=0
+  local -a toks
+  [ -n "$base" ] || return 1
+  IFS=$' \t' read -ra toks <<<"$1"
+  for tok in "${toks[@]}"; do
+    word="${word:+$word }$tok"
+    in_quote "$word" && continue
+    tok="$word" word=
+    [[ "$tok" =~ ^\'[^\']*\'$ ]] || ! shell_expands "$tok" || return 1
+    tok="${tok//[\"\']/}"
+    # A backup suffix writes <file><suffix>, which the ignore rule need not cover.
+    [[ "$tok" =~ ^-[^-]*i. || "$tok" == --i*=* ]] && return 1
+    case "$tok" in /*) path="$tok" ;; *) path="$base/$tok" ;; esac
+    [ -e "$path" ] || continue
+    ignored "$path" || return 1
+    seen=1
+  done
+  [ -z "$word" ] && [ "$seen" = 1 ]
+}
+
 git_mutates() {
   [[ "$1" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
@@ -97,7 +149,10 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] && return 0
+  local bare
+  bare=$(printf '%s' "$seg" | sed -E 's/\$\([^)]*\)//g; s/`[^`]*`//g')
+  [[ "$bare" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[bnsrEuz]*i|--i(n(-(p(l(a(ce?)?)?)?)?)?)?([=[:space:]\"\']|$)) ]] &&
+    ! edits_only_ignored "$seg" && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.
   if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then
@@ -108,14 +163,16 @@ mutates() {
     { [ "$in_main" = 1 ] || targets_main "$seg" writes; } && return 0
   # A redirect is a write, but only where it lands. An absolute destination
   # says for itself whether it is in the checkout; a relative one resolves
-  # against a cwd this segment has already been judged to be main.
-  if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
-    case "${BASH_REMATCH[1]}" in
-      /dev/* | \&*) ;;
-      /*) targets_main "${BASH_REMATCH[1]}" writes && return 0 ;;
-      *) return 0 ;;
+  # against a cwd this segment has already been judged to be main, so it is
+  # judged by the file it names under the cd target.
+  local rest="$seg" dest
+  while [[ "$rest" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;\>]+)(.*) ]]; do
+    dest="${BASH_REMATCH[1]}" rest="${BASH_REMATCH[2]}"
+    case "$dest" in
+      /*) targets_main "$dest" writes && return 0 ;;
+      *) [ "$in_main" = 1 ] && ignored "$target/$dest" || return 0 ;;
     esac
-  fi
+  done
   return 1
 }
 
@@ -123,6 +180,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -n "$cmd" ] || exit 0
 in_main=0
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+base="$cwd"
 cwd_main=0
 for repo in "${REPOS[@]}"; do
   case "$cwd/" in "$repo"/.claude/worktrees/*) ;; "$repo"/*) cwd_main=1 ;; esac
@@ -132,12 +190,18 @@ while IFS= read -r seg || [ -n "$seg" ]; do
 
   if [[ "$seg" =~ ^[[:space:]]*cd[[:space:]]+([^[:space:]]+) ]]; then
     target="${BASH_REMATCH[1]//[\"\']/}"
+    [[ "$target" == "~/"* ]] && target="$HOME${target#\~}"
     in_main=0
+    base=
+    case "$target" in /*) base="$target" ;; esac
     case "$target" in /* | \$* | *.claude/worktrees/*) cwd_main=0 ;; esac
     case "$target" in */.claude/worktrees/*) continue ;; esac
     targets_main "$target" && in_main=1
+    case "$target" in /*) ;; *) target="$root/$target" ;; esac
+    [ "$in_main" = 0 ] || base="$target"
     continue
   fi
+  [[ "$seg" =~ (^|[[:space:]\(])(cd|pushd)[[:space:]] ]] && base= target=
 
   case "$seg" in *"/.claude/worktrees/$slug"*) continue ;; esac
   # Cutting another task's worktree where the conventions put it writes git's
@@ -146,7 +210,8 @@ while IFS= read -r seg || [ -n "$seg" ]; do
   [ "$cwd_main" = 1 ] && [[ "$seg" =~ ^[[:space:]]*git[[:space:]] ]] && ! [[ "$seg" =~ ^[[:space:]]*git[[:space:]]+-C[[:space:]] ]] && git_mutates "$seg" &&
     deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` runs git in a main checkout." "${WTS[0]}"
   { [ "$in_main" = 1 ] || targets_main "$seg"; } || continue
-  mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}"
+  mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}" \
+    $'Git-ignored files there (plans, handoffs) stay writable: use Edit/Write or their absolute path.\n'
 done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
   { print }

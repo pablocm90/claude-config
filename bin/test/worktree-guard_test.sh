@@ -156,6 +156,14 @@ assert_allowed "adding a worktree with the branch flag before the path" \
 assert_blocked "adding a worktree that would land in the main checkout's files" \
   "$(guard_cmd "$tmp" "$SLUG" "cd acme-backend && git worktree add tmp/bump-gem -b bump-gem origin/master")"
 
+# Plans and handoffs live in ignored paths of the main checkout: a write there
+# by a path relative to the repo the command moved into is allowed.
+echo /plans/ >> "$tmp/acme-backend/.git/info/exclude"
+mkdir -p "$tmp/acme-backend/plans" && touch "$tmp/acme-backend/plans/x.md"
+for write in "cd acme-backend && cat >> plans/x.md" "cd acme-backend && sed -i s/a/b/ plans/x.md"; do
+  assert_allowed "a relative write into an ignored path after cd by repo name ($write)" "$(guard_cmd "$tmp" "$SLUG" "$write")"
+done
+
 rm -rf "$tmp"
 
 # --- A single-repo project ----------------------------------------------
@@ -166,7 +174,8 @@ git -C "$repo" init -q
 git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$repo" worktree add -q -b "$SLUG" "$repo/.claude/worktrees/$SLUG" >/dev/null 2>&1
 echo .claude/handoffs/ >> "$repo/.git/info/exclude"
-mkdir -p "$repo/.claude/handoffs"
+mkdir -p "$repo/.claude/handoffs" "$repo/src"
+touch "$repo/.claude/handoffs/$SLUG.md" "$repo/src/app.ts"
 wt="$repo/.claude/worktrees/$SLUG"
 
 guard_at() {
@@ -181,16 +190,66 @@ assert_blocked "single repo: edit in the main checkout" "$(guard_at "$repo" Edit
 assert_allowed "single repo: edit in this window's worktree" "$(guard_at "$repo" Edit "$wt/src/app.ts")"
 # The handoff lives in the main checkout's .claude/handoffs, ignored by git.
 assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Write "$repo/.claude/handoffs/$SLUG.md")"
-for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md"; do
+assert_allowed "single repo: editing an ignored file whose name a shell would expand" "$(guard_at "$repo" Edit "$repo/.claude/handoffs/notes[1].md")"
+for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md" "cd $repo && sed -i 's/a*/b/' \".claude/handoffs/$SLUG.md\""; do
+  assert_allowed "single repo: a relative write into the ignored handoffs after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
+in_place_spellings=(-i "'-i'" -Ei -bnsruzi "'--in-place'")
+long=--in-place
+for n in {3..10}; do in_place_spellings+=("${long:0:n}"); done
+for flag in "${in_place_spellings[@]}"; do
+  assert_blocked "single repo: an in-place edit of a tracked file ($flag)" "$(guard_at "$repo" Bash "cd $repo && sed $flag s/a/b/ src/app.ts")"
+done
+for write in "cd $repo && sed s/a/b/ src/app.ts --in-place" "cd $repo && sed s/a/b/ \$F --in-place" "cd $repo && sed s/a/b/ \$(echo src/app.ts) -i" "cd $repo && sed \"\$(printf s/a/b/)\" -i src/app.ts" "cd $repo && sed s/a/b/ \`echo src/app.ts\` -i" "cd $repo && echo hi >.claude/handoffs/$SLUG.md>src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
+  assert_blocked "single repo: an in-place edit of a tracked file alongside an ignored one ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+touch "$repo/src/my file.ts" "$repo/src/a;b.ts"
+for write in "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md \"$repo/src/my file.ts\"" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md 'src/my file.ts'" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md 'src/a;b.ts'"; do
+  assert_blocked "single repo: an in-place edit of a quoted tracked path the guard splits ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+for script in "'s/a b/c/'" "\"s/it's/its/\""; do
+  assert_allowed "single repo: an in-place edit whose quoted script holds a space or a quote ($script)" "$(guard_at "$repo" Bash "cd $repo && sed -i $script .claude/handoffs/$SLUG.md")"
+done
+# A relative cd the guard cannot place leaves operands with no known base.
+echo /.claude/worktrees/ >> "$repo/.git/info/exclude"
+mkdir -p "$wt/src" && touch "$wt/src/app.ts"
+assert_allowed "single repo: an in-place edit of the handoff after cd into the worktree" "$(guard_at "$repo" Bash "cd $wt && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md")"
+assert_blocked "single repo: an in-place edit after a relative cd out of the worktree" "$(guard_at "$wt" Bash "cd ../../.. && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts")"
+# The shell expands a glob or a variable into files the guard never sees named.
+for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts' "'src/'*'.ts'"; do
+  write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"
+  assert_blocked "single repo: an in-place edit through a shell expansion after cd ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+echo '*.log' >> "$repo/.git/info/exclude"
+touch "$repo/src/debug.log"
+for flag in -i -Ei --in-place --in-pl; do
+  assert_allowed "single repo: an in-place edit of a file ignored by name ($flag)" "$(guard_at "$repo" Bash "sed $flag s/a/b/ $repo/src/debug.log")"
+done
+for write in "sed -i.bak s/a/b/ $repo/src/debug.log" "cd $repo && sed -ie s/a/b/ src/debug.log" "sed --in-place=.bak s/a/b/ $repo/src/debug.log" "sed '-i.bak' s/a/b/ $repo/src/debug.log" "sed \"--in-place=.bak\" s/a/b/ $repo/src/debug.log" "sed --in-pl=.bak s/a/b/ $repo/src/debug.log" "sed --i=.bak s/a/b/ $repo/src/debug.log"; do
+  assert_blocked "single repo: an in-place edit whose backup the ignore rule may not cover ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+for write in "cd $repo && cat >> .claude/handoffs/\$F" "cat >> $repo/.claude/handoffs/\$F" "rm $repo/.claude/handoffs/\$F"; do
+  assert_blocked "single repo: a write under an ignored path through a shell expansion ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md 2> src/app.ts" "cat > $repo/.claude/handoffs/$SLUG.md 2> $repo/src/app.ts"; do
+  assert_blocked "single repo: a redirect into a tracked file after one into the handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 # The exemption covers where a write lands, not where a command runs from or what it moves away.
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
   assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+for move in "(cd" "pushd" "builtin cd"; do
+  for write in "echo x > app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md app.ts"; do
+    assert_blocked "single repo: a write after a directory change the guard cannot follow ($move, $write)" "$(guard_at "$repo" Bash "cd $repo/.claude/handoffs && $move ../../src && $write")"
+  done
+done
+assert_blocked "single repo: an in-place edit after a pushd from a pane in an ignored directory" "$(guard_at "$repo/.claude/handoffs" Bash "pushd ../../src && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md app.ts")"
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
 # After a merge the main checkout goes back to the default branch and pulls.
 for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do
@@ -203,6 +262,9 @@ assert_blocked "single repo: committing from the main checkout" "$(guard_at "$re
 assert_allowed "single repo: committing from the worktree" "$(guard_at "$wt" Bash "git commit -m x")"
 assert_allowed "single repo: moving into the worktree first" "$(guard_at "$repo" Bash "cd $wt && git commit -m x")"
 assert_allowed "single repo: moving into the worktree by a relative path" "$(guard_at "$repo" Bash "cd .claude/worktrees/$SLUG && git commit -m x")"
+for stay in "cd ~+" "cd ~nobody/x"; do
+  assert_blocked "single repo: committing after a cd the guard cannot place ($stay)" "$(guard_at "$repo" Bash "$stay && git commit -m x")"
+done
 assert_allowed "single repo: committing elsewhere after leaving the repo" "$(guard_at "$repo" Bash "cd /tmp && git commit -m x")"
 # task-context tells the agent to aim git with -C; the -C target, not the
 # pane's cwd, says which checkout the command touches.
@@ -222,7 +284,11 @@ for opener in "cat > /tmp/run.sh <<'EOF'" "cat <<'EOF' > shell.txt" "gh issue cr
 done
 assert_blocked "single repo: a heredoc that never closes hides nothing" "$(guard_at "$repo" Bash "$(printf "cat <<'EOF'\ngit commit -m x")")"
 assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash "mkdir -p /tmp/scratch-x")"
-assert_allowed "single repo: reading from the main checkout" "$(guard_at "$repo" Bash "git log --oneline -3")"
+for read in "git log --oneline -3" "cd $repo && sed -n 's/x/i/p' src/app.ts" "cd $repo && sed --quiet 1p src/app.ts" \
+  "cd $repo && sed -n 's/ --include=.*//p' src/app.ts" "cd $repo && find src -exec sed -n 1p {} + -print" \
+  "cd $repo && sed -n 1p \$(grep -ril foo src)" "cd $repo && sed -n 1p \`grep -ril foo src\`"; do
+  assert_allowed "single repo: reading from the main checkout ($read)" "$(guard_at "$repo" Bash "$read")"
+done
 rm -rf "$repo"
 
 # --- A single repo whose name other repos' paths share --------------------
@@ -238,7 +304,26 @@ assert_allowed "repo named like a shared dir: a relative write in another repo" 
 assert_allowed "repo named like a shared dir: an absolute write in another repo" "$(guard_at "$repo" Bash "rm $base/other/.claude/hooks/x.sh")"
 assert_blocked "repo named like a shared dir: an absolute write in its main checkout" "$(guard_at "$repo" Bash "rm $repo/bin/x")"
 assert_blocked "repo named like a shared dir: a write in its main checkout through ~" "$(HOME=$base guard_at "$repo" Bash 'rm ~/.claude/bin/x')"
+echo /.claude/handoffs/ >> "$repo/.git/info/exclude"
+assert_allowed "repo named like a shared dir: an ignored write after cd through ~" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && cat >> .claude/handoffs/x.md')"
+assert_blocked "repo named like a shared dir: an in-place edit after a cd the guard cannot resolve" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && sed -i s/a/b/ bin/x')"
 rm -rf "$base"
+
+# --- A workspace root that is itself a repo -------------------------------
+# The root ignores the nested repos it holds; a file in one is tracked or
+# ignored by the nested repo alone.
+repo=$(mktemp -d)
+mkdir "$repo/acme-backend"
+for dir in "$repo" "$repo/acme-backend"; do
+  git -C "$dir" init -q
+  git -C "$dir" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$dir" worktree add -q -b "$SLUG" "$dir/.claude/worktrees/$SLUG" >/dev/null 2>&1
+done
+echo /acme-backend/ >> "$repo/.git/info/exclude"
+echo /plans/ >> "$repo/acme-backend/.git/info/exclude"
+assert_blocked "root repo: a tracked file of a nested repo the root ignores" "$(guard_at "$repo" Write "$repo/acme-backend/app/x.rb")"
+assert_allowed "root repo: a file the nested repo ignores" "$(guard_at "$repo" Write "$repo/acme-backend/plans/x.md")"
+rm -rf "$repo"
 
 [ "$fails" -eq 0 ] && echo "worktree-guard: all assertions passed"
 exit "$fails"

@@ -157,7 +157,7 @@ try:
     toks = list(lex)
     depth, tick, prev, in_sed = 0, False, "", False
     for tok in toks:
-        ticks = re.sub(r"'[^']*'", "", tok).count("`")
+        ticks = re.sub(r"'[^']*'|\\.", "", tok).count("`")
         skip = tick or depth > 0
         if ticks % 2:
             tick = not tick

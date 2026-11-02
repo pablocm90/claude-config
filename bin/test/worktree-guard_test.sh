@@ -200,7 +200,7 @@ done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
-in_place_spellings=(-i "'-i'" -Ei -nsruzi "'--in-place'")
+in_place_spellings=(-i "'-i'" -Ei -bnsruzi "'--in-place'")
 long=--in-place
 for n in {3..10}; do in_place_spellings+=("${long:0:n}"); done
 for flag in "${in_place_spellings[@]}"; do

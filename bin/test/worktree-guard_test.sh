@@ -199,7 +199,13 @@ done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
-for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed '-i' s/a/b/ src/app.ts" "cd $repo && sed -Ei s/a/b/ src/app.ts" "cd $repo && sed --in-pl s/a/b/ src/app.ts" "cd $repo && sed --i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
+in_place_spellings=(-i "'-i'" -Ei -nsruzi "'--in-place'")
+long=--in-place
+for n in {3..10}; do in_place_spellings+=("${long:0:n}"); done
+for flag in "${in_place_spellings[@]}"; do
+  assert_blocked "single repo: an in-place edit of a tracked file ($flag)" "$(guard_at "$repo" Bash "cd $repo && sed $flag s/a/b/ src/app.ts")"
+done
+for write in "cd $repo && sed s/a/b/ src/app.ts --in-place" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
   assert_blocked "single repo: an in-place edit of a tracked file alongside an ignored one ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 touch "$repo/src/my file.ts" "$repo/src/a;b.ts"
@@ -268,7 +274,8 @@ for opener in "cat > /tmp/run.sh <<'EOF'" "cat <<'EOF' > shell.txt" "gh issue cr
 done
 assert_blocked "single repo: a heredoc that never closes hides nothing" "$(guard_at "$repo" Bash "$(printf "cat <<'EOF'\ngit commit -m x")")"
 assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash "mkdir -p /tmp/scratch-x")"
-for read in "git log --oneline -3" "cd $repo && sed -n 's/x/i/p' src/app.ts" "cd $repo && sed --quiet 1p src/app.ts"; do
+for read in "git log --oneline -3" "cd $repo && sed -n 's/x/i/p' src/app.ts" "cd $repo && sed --quiet 1p src/app.ts" \
+  "cd $repo && sed -n 's/ --include=.*//p' src/app.ts" "cd $repo && find src -exec sed -n 1p {} + -print"; do
   assert_allowed "single repo: reading from the main checkout ($read)" "$(guard_at "$repo" Bash "$read")"
 done
 rm -rf "$repo"

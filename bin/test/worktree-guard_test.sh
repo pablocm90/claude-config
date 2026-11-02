@@ -244,6 +244,12 @@ done
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
   assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+for move in "(cd" "pushd" "builtin cd"; do
+  for write in "echo x > app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md app.ts"; do
+    assert_blocked "single repo: a write after a directory change the guard cannot follow ($move, $write)" "$(guard_at "$repo" Bash "cd $repo/.claude/handoffs && $move ../../src && $write")"
+  done
+done
+assert_blocked "single repo: an in-place edit after a pushd from a pane in an ignored directory" "$(guard_at "$repo/.claude/handoffs" Bash "pushd ../../src && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md app.ts")"
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
 # After a merge the main checkout goes back to the default branch and pulls.
 for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do

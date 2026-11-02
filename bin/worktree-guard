@@ -199,6 +199,7 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     [ "$in_main" = 0 ] || base="$target"
     continue
   fi
+  [[ "$seg" =~ (^|[[:space:]\(])(cd|pushd)[[:space:]] ]] && base= target=
 
   case "$seg" in *"/.claude/worktrees/$slug"*) continue ;; esac
   # Cutting another task's worktree where the conventions put it writes git's

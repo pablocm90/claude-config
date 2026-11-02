@@ -32,8 +32,7 @@ done
 [ "${#REPOS[@]}" -gt 0 ] || exit 0
 
 deny() {
-  printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n' "$1" "$2" >&2
-  printf 'Git-ignored files there (plans, handoffs) stay writable: use Edit/Write or their absolute path.\n' >&2
+  printf 'Blocked: %s\nUse this task window'"'"'s worktree instead: %s\n%s' "$1" "$2" "${3-}" >&2
   exit 2
 }
 
@@ -186,7 +185,8 @@ while IFS= read -r seg || [ -n "$seg" ]; do
   [ "$cwd_main" = 1 ] && [[ "$seg" =~ ^[[:space:]]*git[[:space:]] ]] && ! [[ "$seg" =~ ^[[:space:]]*git[[:space:]]+-C[[:space:]] ]] && git_mutates "$seg" &&
     deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` runs git in a main checkout." "${WTS[0]}"
   { [ "$in_main" = 1 ] || targets_main "$seg"; } || continue
-  mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}"
+  mutates "$seg" && deny "\`$(printf '%s' "$seg" | sed 's/^[[:space:]]*//')\` writes to a main checkout." "${WTS[0]}" \
+    $'Git-ignored files there (plans, handoffs) stay writable: use Edit/Write or their absolute path.\n'
 done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
   { print }

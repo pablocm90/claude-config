@@ -166,6 +166,7 @@ git -C "$repo" init -q
 git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$repo" worktree add -q -b "$SLUG" "$repo/.claude/worktrees/$SLUG" >/dev/null 2>&1
 echo .claude/handoffs/ >> "$repo/.git/info/exclude"
+mkdir -p "$repo/.claude/handoffs"
 wt="$repo/.claude/worktrees/$SLUG"
 
 guard_at() {
@@ -180,8 +181,24 @@ assert_blocked "single repo: edit in the main checkout" "$(guard_at "$repo" Edit
 assert_allowed "single repo: edit in this window's worktree" "$(guard_at "$repo" Edit "$wt/src/app.ts")"
 # The handoff lives in the main checkout's .claude/handoffs, ignored by git.
 assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Write "$repo/.claude/handoffs/$SLUG.md")"
-assert_allowed "single repo: redirecting into the ignored handoffs" "$(guard_at "$repo" Bash "git diff > $repo/.claude/handoffs/$SLUG.patch")"
+for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md"; do
+  assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+echo dist/ >> "$repo/.git/info/exclude"
+assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
+assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
+# The exemption covers where a write lands, not where a command runs from or what it moves away.
+for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
+  assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 assert_blocked "single repo: branching off from the main checkout" "$(guard_at "$repo" Bash "git checkout -b docs/design")"
+# After a merge the main checkout goes back to the default branch and pulls.
+for sync in "git checkout main && git pull" "git fetch && git switch master" "git -C $repo switch main"; do
+  assert_allowed "single repo: returning the main checkout to its default branch ($sync)" "$(guard_at "$repo" Bash "$sync")"
+done
+for write in "git checkout main -- src/app.ts" "git switch -c main" "git switch feature" "git commit -am x & git switch main" "git commit -m x # checkout main"; do
+  assert_blocked "single repo: anything but returning to the default branch ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 assert_blocked "single repo: committing from the main checkout" "$(guard_at "$repo/src" Bash "git commit -m x")"
 assert_allowed "single repo: committing from the worktree" "$(guard_at "$wt" Bash "git commit -m x")"
 assert_allowed "single repo: moving into the worktree first" "$(guard_at "$repo" Bash "cd $wt && git commit -m x")"

@@ -72,7 +72,7 @@ targets_main() {
     tok="${tok#./}"
     tok="${tok/#\~/$HOME}"
     for repo in "${REPOS[@]}"; do
-      case "$tok" in "$repo" | "$repo"/*) return 0 ;; esac
+      case "$tok" in "$repo" | "$repo"/*) [ -n "${2-}" ] && ignored "$tok" || return 0 ;; esac
       # The root's own name heads no path written from the root, and other
       # repos share it when it is a common one such as .claude.
       [ "$repo" = "$root" ] && continue
@@ -89,6 +89,7 @@ targets_main() {
 }
 
 git_mutates() {
+  [[ "$1" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
     [[ "$1" =~ (^|[[:space:]])(commit|add|checkout|switch|merge|rebase|reset|revert|push|stash|cherry-pick|apply|restore|clean)([[:space:]]|$) ]]
 }
@@ -97,20 +98,21 @@ mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
   [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] && return 0
-  # For a copy or move only the destination is a write: reading a file out of
-  # the main checkout is legitimate.
-  if [[ "$seg" =~ (^|[[:space:]])(cp|mv|ln|install)([[:space:]]|$) ]]; then
-    { [ "$in_main" = 1 ] || targets_main "${seg##* }"; } && return 0
+  # For a copy only the destination is a write: reading a file out of the
+  # main checkout is legitimate. A move also deletes its source.
+  if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then
+    { [ "$in_main" = 1 ] || targets_main "${seg##* }" writes; } && return 0
     return 1
   fi
-  [[ "$seg" =~ (^|[[:space:]])(rm|mkdir|touch|chmod|tee|truncate|dd)([[:space:]]|$) ]] && return 0
+  [[ "$seg" =~ (^|[[:space:]])(rm|mv|mkdir|touch|chmod|tee|truncate|dd)([[:space:]]|$) ]] &&
+    { [ "$in_main" = 1 ] || targets_main "$seg" writes; } && return 0
   # A redirect is a write, but only where it lands. An absolute destination
   # says for itself whether it is in the checkout; a relative one resolves
   # against a cwd this segment has already been judged to be main.
   if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
     case "${BASH_REMATCH[1]}" in
       /dev/* | \&*) ;;
-      /*) targets_main "${BASH_REMATCH[1]}" && ! ignored "${BASH_REMATCH[1]}" && return 0 ;;
+      /*) targets_main "${BASH_REMATCH[1]}" writes && return 0 ;;
       *) return 0 ;;
     esac
   fi

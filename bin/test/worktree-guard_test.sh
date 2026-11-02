@@ -289,6 +289,10 @@ for read in "git log --oneline -3" "cd $repo && sed -n 's/x/i/p' src/app.ts" "cd
   "cd $repo && sed -n 1p \$(grep -ril foo src)" "cd $repo && sed -n 1p \`grep -ril foo src\`" "cd $repo && grep -ri foo src"; do
   assert_allowed "single repo: reading from the main checkout ($read)" "$(guard_at "$repo" Bash "$read")"
 done
+for unparsed in "$(printf "cd %s && gh pr create --title x --body \"\$(cat <<'EOF'\nIt's done.\nEOF\n)\"" "$repo")" \
+  "cd $repo && echo \"used \\\"\"" "cd $repo && echo \"sedan \\\"\"" "cd $repo && echo \$'it\\'s'"; do
+  assert_allowed "single repo: a command without sed that shlex cannot split ($unparsed)" "$(guard_at "$repo" Bash "$unparsed")"
+done
 rm -rf "$repo"
 
 # --- A single repo whose name other repos' paths share --------------------

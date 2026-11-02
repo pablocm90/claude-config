@@ -199,8 +199,8 @@ done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
-for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts"; do
-  assert_blocked "single repo: an in-place edit of a tracked file after cd ($write)" "$(guard_at "$repo" Bash "$write")"
+for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
+  assert_blocked "single repo: an in-place edit of a tracked file alongside an ignored one ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 # The shell expands a glob or a variable into files the guard never sees named.
 for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts' "'src/'*'.ts'"; do

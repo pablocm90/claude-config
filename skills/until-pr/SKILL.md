@@ -53,7 +53,7 @@ After a merge, once context passes 150k tokens, when a context reminder arrives,
 When the done criterion holds:
 
 1. **Ship** as *Shipping* says: review subagents, pre-push gate, push, PR. A project's own pre-PR question (such as `seed-and-demo-data`) is the one stop at the finish.
-2. **Run the `visual-review` skill on the PR number, through its notes step; leave the opening to `claude-dev`.** Then, when `claude-dev mode` answers, run `claude-dev ready --pr <n> --page <page path>`: it notifies the desktop and opens the page on the task window, now if the human is there, or when they next switch to it. Done when `ready` exits 0. When `mode` says *not in a task window*, open the page as `visual-review` does instead; done when the opener has returned.
+2. **Run the `visual-review` skill on the PR number, through its notes step; leave the opening to `claude-dev`.** Then, when `claude-dev mode` answers, start `visual-review serve --no-open '<page path>'` in the background and, once it prints `Serving <url>`, run `claude-dev ready --pr <n> --page <url>`: it notifies the desktop and opens the page on the task window, now if the human is there, or when they next switch to it. Done when `ready` exits 0. When `mode` says *not in a task window*, serve the page as `visual-review` does instead, letting `serve` open it; done when it prints `Serving <url>`.
 3. **Report and stop**: the PR link and one sentence on what it does. Then wait.
 
 ## Follow-up

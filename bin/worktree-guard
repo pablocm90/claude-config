@@ -155,12 +155,13 @@ lex.whitespace_split = True
 lex.commenters = ""
 try:
     toks = list(lex)
-    depth, tick, prev, in_sed = 0, False, None, False
+    depth, tick, prev, in_sed = 0, False, "", False
     for tok in toks:
-        skip = tick or depth > 0 or tok.startswith("`")
-        if tick or tok.startswith("`"):
-            tick = not tok.endswith("`") if tick else not (len(tok) > 1 and tok.endswith("`"))
-        elif tok == "(" and (depth or prev == "$"):
+        ticks = re.sub(r"'[^']*'", "", tok).count("`")
+        skip = tick or depth > 0
+        if ticks % 2:
+            tick = not tick
+        elif tok == "(" and (depth or prev.endswith("$")):
             depth += 1
         elif tok == ")" and depth:
             depth -= 1

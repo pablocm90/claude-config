@@ -206,7 +206,7 @@ for n in {3..10}; do in_place_spellings+=("${long:0:n}"); done
 for flag in "${in_place_spellings[@]}"; do
   assert_blocked "single repo: an in-place edit of a tracked file ($flag)" "$(guard_at "$repo" Bash "cd $repo && sed $flag s/a/b/ src/app.ts")"
 done
-for write in "cd $repo && s''ed -i s/a/b/ src/app.ts" "cd $repo && s\"\"ed -i s/a/b/ src/app.ts" "cd $repo && se\\d -i s/a/b/ src/app.ts" "cd $repo && sed s#a#b# -i src/app.ts" "cd $repo && sed s/a/b/ src/app.ts --in-place" "cd $repo && sed s/a/b/ \$F --in-place" "cd $repo && sed 's/\$(/' -i src/app.ts 's/)//'" "cd $repo && sed s/a/b/ \`echo\` -i src/app.ts" "cd $repo && sed -'i' s/a/b/ src/app.ts" "cd $repo && sed \\-i s/a/b/ src/app.ts" "cd $repo && sed s/a/b/ \$(echo src/app.ts) -i" "cd $repo && sed \"\$(printf s/a/b/)\" -i src/app.ts" "cd $repo && sed s/a/b/ \`echo src/app.ts\` -i" "cd $repo && echo hi >.claude/handoffs/$SLUG.md>src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
+for write in "cd $repo && sed -e \`printf s/a/\`b/ -i src/app.ts" "cd $repo && sed 's/\`/x/' -i src/app.ts" "cd $repo && s''ed -i s/a/b/ src/app.ts" "cd $repo && s\"\"ed -i s/a/b/ src/app.ts" "cd $repo && se\\d -i s/a/b/ src/app.ts" "cd $repo && sed s#a#b# -i src/app.ts" "cd $repo && sed s/a/b/ src/app.ts --in-place" "cd $repo && sed s/a/b/ \$F --in-place" "cd $repo && sed 's/\$(/' -i src/app.ts 's/)//'" "cd $repo && sed s/a/b/ \`echo\` -i src/app.ts" "cd $repo && sed -'i' s/a/b/ src/app.ts" "cd $repo && sed \\-i s/a/b/ src/app.ts" "cd $repo && sed s/a/b/ \$(echo src/app.ts) -i" "cd $repo && sed \"\$(printf s/a/b/)\" -i src/app.ts" "cd $repo && sed s/a/b/ \`echo src/app.ts\` -i" "cd $repo && echo hi >.claude/handoffs/$SLUG.md>src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
   assert_blocked "single repo: an in-place edit of a tracked file alongside an ignored one ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 touch "$repo/src/my file.ts" "$repo/src/a;b.ts"
@@ -286,7 +286,8 @@ assert_blocked "single repo: a heredoc that never closes hides nothing" "$(guard
 assert_allowed "single repo: a write outside the repo" "$(guard_at "$repo" Bash "mkdir -p /tmp/scratch-x")"
 for read in "git log --oneline -3" "cd $repo && sed -n 's/x/i/p' src/app.ts" "cd $repo && sed --quiet 1p src/app.ts" \
   "cd $repo && sed -n 's/ --include=.*//p' src/app.ts" "cd $repo && find src -exec sed -n 1p {} + -print" \
-  "cd $repo && sed -n 1p \$(grep -ril foo src)" "cd $repo && sed -n 1p \`grep -ril foo src\`" "cd $repo && grep -ri foo src"; do
+  "cd $repo && sed -n 1p \$(grep -ril foo src)" "cd $repo && sed -n 1p \`grep -ril foo src\`" "cd $repo && grep -ri foo src" \
+  "cd $repo && sed -n 1p src/\$(grep -il foo src)" "cd $repo && sed -n 1p src/\`grep -il foo src\`"; do
   assert_allowed "single repo: reading from the main checkout ($read)" "$(guard_at "$repo" Bash "$read")"
 done
 shadow=$(mktemp -d)

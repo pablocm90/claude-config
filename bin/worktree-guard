@@ -251,11 +251,10 @@ while IFS= read -r seg || [ -n "$seg" ]; do
 done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
   /\\$/ { sub(/\\$/, ""); print; cont = cont $0 " "; next }
-  cont != "" { print cont $0; cont = "" }
-  { print }
-  match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
-    $0 !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
-    d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
+  { line = cont $0; if (cont != "") print line; cont = ""; print }
+  match(line, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
+    line !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
+    d = substr(line, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
   }
   END { printf "%s", cont held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
 exit 0

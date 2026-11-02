@@ -209,6 +209,11 @@ done
 for script in "'s/a b/c/'" "\"s/it's/its/\""; do
   assert_allowed "single repo: an in-place edit whose quoted script holds a space or a quote ($script)" "$(guard_at "$repo" Bash "cd $repo && sed -i $script .claude/handoffs/$SLUG.md")"
 done
+# A relative cd the guard cannot place leaves operands with no known base.
+echo /.claude/worktrees/ >> "$repo/.git/info/exclude"
+mkdir -p "$wt/src" && touch "$wt/src/app.ts"
+assert_allowed "single repo: an in-place edit of the handoff after cd into the worktree" "$(guard_at "$repo" Bash "cd $wt && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md")"
+assert_blocked "single repo: an in-place edit after a relative cd out of the worktree" "$(guard_at "$wt" Bash "cd ../../.. && sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts")"
 # The shell expands a glob or a variable into files the guard never sees named.
 for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts' "'src/'*'.ts'"; do
   write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"

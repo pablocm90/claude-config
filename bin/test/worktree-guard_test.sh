@@ -190,6 +190,7 @@ assert_blocked "single repo: edit in the main checkout" "$(guard_at "$repo" Edit
 assert_allowed "single repo: edit in this window's worktree" "$(guard_at "$repo" Edit "$wt/src/app.ts")"
 # The handoff lives in the main checkout's .claude/handoffs, ignored by git.
 assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Write "$repo/.claude/handoffs/$SLUG.md")"
+assert_allowed "single repo: editing an ignored file whose name a shell would expand" "$(guard_at "$repo" Edit "$repo/.claude/handoffs/notes[1].md")"
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done

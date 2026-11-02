@@ -44,13 +44,17 @@ shell_expands() {
 # Only the repo holding the path decides: a root that ignores a nested repo
 # says nothing about that repo's files. The root comes first, so the last
 # repo holding the path is the deepest.
-ignored() {
+ignored_literally() {
   local repo owner=
-  ! shell_expands "$1" || return 1
   for repo in "${REPOS[@]}"; do
     case "$1" in "$repo"/*) owner="$repo" ;; esac
   done
   git -C "$owner" check-ignore -q "$1" 2>/dev/null
+}
+
+# A shell path is judged only when the shell would not expand it.
+ignored() {
+  ! shell_expands "$1" && ignored_literally "$1"
 }
 
 if [ "$tool" != Bash ]; then
@@ -59,7 +63,7 @@ if [ "$tool" != Bash ]; then
   for i in "${!REPOS[@]}"; do
     case "$file" in
       "${REPOS[i]}"/.claude/worktrees/*) exit 0 ;;
-      "${REPOS[i]}"/*) ignored "$file" && exit 0
+      "${REPOS[i]}"/*) ignored_literally "$file" && exit 0
         deny "$file is in the main checkout of $(basename "${REPOS[i]}")." \
         "${WTS[i]}/${file#"${REPOS[i]}"/}" ;;
     esac

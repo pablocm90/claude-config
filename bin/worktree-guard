@@ -140,6 +140,45 @@ edits_only_ignored() {
   [ -z "$word" ] && [ "$seen" = 1 ]
 }
 
+# sed's in-place flag, among the words the shell hands sed: quotes removed,
+# words inside a command substitution left out. Only a segment naming sed is
+# parsed; one that does not parse, or an interpreter that fails, counts as in
+# place.
+sed_in_place() {
+  local unquoted=${1//[\"\'\\]/}
+  [[ "$unquoted" =~ (^|[^[:alnum:]_])sed([^[:alnum:]_]|$) ]] || return 1
+  /usr/bin/python3 -I - "$1" <<'PY'
+import re, shlex, sys
+flag = re.compile(r"-[bnsrEuz]*i.*|--i(n(-(p(l(a(ce?)?)?)?)?)?)?(=.*)?", re.S)
+lex = shlex.shlex(sys.argv[1], posix=False, punctuation_chars=True)
+lex.whitespace_split = True
+lex.commenters = ""
+try:
+    toks = list(lex)
+    depth, tick, prev, in_sed = 0, False, "", False
+    for tok in toks:
+        ticks = re.sub(r"'[^']*'|\\.", "", tok).count("`")
+        skip = tick or depth > 0
+        if ticks % 2:
+            tick = not tick
+        elif tok == "(" and (depth or prev.endswith("$")):
+            depth += 1
+        elif tok == ")" and depth:
+            depth -= 1
+        prev = tok
+        if skip:
+            continue
+        word = "".join(shlex.split(tok))
+        if in_sed and flag.fullmatch(word):
+            sys.exit(0)
+        in_sed = in_sed or word == "sed"
+except ValueError:
+    sys.exit(0)
+sys.exit(3)
+PY
+  [ "$?" != 3 ]
+}
+
 git_mutates() {
   [[ "$1" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
@@ -149,10 +188,7 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  local bare
-  bare=$(printf '%s' "$seg" | sed -E 's/\$\([^)]*\)//g; s/`[^`]*`//g')
-  [[ "$bare" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[bnsrEuz]*i|--i(n(-(p(l(a(ce?)?)?)?)?)?)?([=[:space:]\"\']|$)) ]] &&
-    ! edits_only_ignored "$seg" && return 0
+  sed_in_place "$seg" && ! edits_only_ignored "$seg" && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.
   if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then
@@ -214,10 +250,11 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     $'Git-ignored files there (plans, handoffs) stay writable: use Edit/Write or their absolute path.\n'
 done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
-  { print }
-  match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
-    $0 !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
-    d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
+  /\\$/ { sub(/\\$/, ""); print; cont = cont $0 " "; next }
+  { line = cont $0; if (cont != "") print line; cont = ""; print }
+  match(line, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
+    line !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
+    d = substr(line, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
   }
-  END { printf "%s", held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
+  END { printf "%s", cont held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
 exit 0

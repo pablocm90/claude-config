@@ -156,6 +156,14 @@ assert_allowed "adding a worktree with the branch flag before the path" \
 assert_blocked "adding a worktree that would land in the main checkout's files" \
   "$(guard_cmd "$tmp" "$SLUG" "cd acme-backend && git worktree add tmp/bump-gem -b bump-gem origin/master")"
 
+# Plans and handoffs live in ignored paths of the main checkout: a write there
+# by a path relative to the repo the command moved into is allowed.
+echo /plans/ >> "$tmp/acme-backend/.git/info/exclude"
+mkdir -p "$tmp/acme-backend/plans" && touch "$tmp/acme-backend/plans/x.md"
+for write in "cd acme-backend && cat >> plans/x.md" "cd acme-backend && sed -i s/a/b/ plans/x.md"; do
+  assert_allowed "a relative write into an ignored path after cd by repo name ($write)" "$(guard_cmd "$tmp" "$SLUG" "$write")"
+done
+
 rm -rf "$tmp"
 
 # --- A single-repo project ----------------------------------------------

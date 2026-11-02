@@ -156,6 +156,7 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     case "$target" in /* | \$* | *.claude/worktrees/*) cwd_main=0 ;; esac
     case "$target" in */.claude/worktrees/*) continue ;; esac
     targets_main "$target" && in_main=1
+    case "$target" in /*) ;; *) target="$root/$target" ;; esac
     continue
   fi
 

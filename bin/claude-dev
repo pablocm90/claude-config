@@ -17,7 +17,7 @@
 #                                        review; the note becomes the review's
 #                                        opening context paragraph (stride tasks
 #                                        only: until-pr refuses it)
-#   claude-dev ready [slug] --pr <n> --page <path>
+#   claude-dev ready [slug] --pr <n> --page <url>
 #                                        signal a finished until-pr run: desktop
 #                                        notification, then the visual review
 #                                        page opens on the task window
@@ -447,7 +447,7 @@ cmd_ready() {
       --note=*) have_note=1; note="${1#--note=}"; shift ;;
       --page)   page="${2:-}"; shift 2 || shift ;;
       --pr)     pr="${2:-}"; shift 2 || shift ;;
-      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -] [--pr <n> --page <path>]" ;;
+      -*) die "usage: claude-dev ready [slug] [--note <text>|--note -] [--pr <n> --page <url>]" ;;
       *)  slug="$1"; shift ;;
     esac
   done
@@ -458,7 +458,7 @@ cmd_ready() {
   local window; window=$(sanitize "$slug")
   # until-pr signals only its finish; a page-less signal would pop a stride review.
   [ -n "$page" ] || [ -f "$(stride_marker "$root" "$window")" ] ||
-    die "'$window' runs until-pr: finish it with 'claude-dev ready --pr <n> --page <path>', or switch it to strides with 'claude-dev task $window --stride' first"
+    die "'$window' runs until-pr: finish it with 'claude-dev ready --pr <n> --page <url>', or switch it to strides with 'claude-dev task $window --stride' first"
   local dir="$root/.claude/reviews"
   mkdir -p "$dir"
   : > "$dir/$window.ready"

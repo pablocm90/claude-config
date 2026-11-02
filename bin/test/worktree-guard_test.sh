@@ -256,6 +256,9 @@ assert_blocked "single repo: committing from the main checkout" "$(guard_at "$re
 assert_allowed "single repo: committing from the worktree" "$(guard_at "$wt" Bash "git commit -m x")"
 assert_allowed "single repo: moving into the worktree first" "$(guard_at "$repo" Bash "cd $wt && git commit -m x")"
 assert_allowed "single repo: moving into the worktree by a relative path" "$(guard_at "$repo" Bash "cd .claude/worktrees/$SLUG && git commit -m x")"
+for stay in "cd ~+" "cd ~nobody/x"; do
+  assert_blocked "single repo: committing after a cd the guard cannot place ($stay)" "$(guard_at "$repo" Bash "$stay && git commit -m x")"
+done
 assert_allowed "single repo: committing elsewhere after leaving the repo" "$(guard_at "$repo" Bash "cd /tmp && git commit -m x")"
 # task-context tells the agent to aim git with -C; the -C target, not the
 # pane's cwd, says which checkout the command touches.

@@ -193,7 +193,7 @@ assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Wr
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
-for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md" "cd $repo && sed -i 's/a/b/' \".claude/handoffs/$SLUG.md\""; do
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md" "cd $repo && sed -i 's/a*/b/' \".claude/handoffs/$SLUG.md\""; do
   assert_allowed "single repo: a relative write into the ignored handoffs after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 echo dist/ >> "$repo/.git/info/exclude"
@@ -201,6 +201,11 @@ assert_blocked "single repo: a file that only a directory pattern names is not i
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
 for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts"; do
   assert_blocked "single repo: an in-place edit of a tracked file after cd ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+# The shell expands a glob or a variable into files the guard never sees named.
+for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts'; do
+  write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"
+  assert_blocked "single repo: an in-place edit through a shell expansion after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md 2> src/app.ts" "cat > $repo/.claude/handoffs/$SLUG.md 2> $repo/src/app.ts"; do
   assert_blocked "single repo: a redirect into a tracked file after one into the handoffs ($write)" "$(guard_at "$repo" Bash "$write")"

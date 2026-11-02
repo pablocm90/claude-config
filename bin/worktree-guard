@@ -100,6 +100,8 @@ edits_only_ignored() {
   local -a toks
   IFS=$' \t' read -ra toks <<<"$1"
   for tok in "${toks[@]}"; do
+    # The shell expands these into files the guard never sees named.
+    case "$tok" in \'*\') ;; *[\*\?\[\{\$\`~\\]*) return 1 ;; esac
     tok="${tok//[\"\']/}"
     case "$tok" in /*) path="$tok" ;; *) path="$target/$tok" ;; esac
     [ -e "$path" ] || continue

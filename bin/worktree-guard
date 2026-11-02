@@ -147,7 +147,7 @@ edits_only_ignored() {
 sed_in_place() {
   local unquoted=${1//[\"\'\\]/}
   [[ "$unquoted" =~ (^|[^[:alnum:]_])sed([^[:alnum:]_]|$) ]] || return 1
-  /usr/bin/python3 - "$1" <<'PY'
+  /usr/bin/python3 -I - "$1" <<'PY'
 import re, shlex, sys
 flag = re.compile(r"-[bnsrEuz]*i.*|--i(n(-(p(l(a(ce?)?)?)?)?)?)?(=.*)?", re.S)
 lex = shlex.shlex(sys.argv[1], posix=False, punctuation_chars=True)
@@ -173,9 +173,9 @@ try:
         in_sed = in_sed or word == "sed"
 except ValueError:
     sys.exit(0)
-sys.exit(1)
+sys.exit(3)
 PY
-  [ "$?" != 1 ]
+  [ "$?" != 3 ]
 }
 
 git_mutates() {

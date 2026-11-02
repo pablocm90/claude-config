@@ -207,6 +207,14 @@ for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`ec
   write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"
   assert_blocked "single repo: an in-place edit through a shell expansion after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+echo '*.log' >> "$repo/.git/info/exclude"
+touch "$repo/src/debug.log"
+for flag in -i --in-place; do
+  assert_allowed "single repo: an in-place edit of a file ignored by name ($flag)" "$(guard_at "$repo" Bash "sed $flag s/a/b/ $repo/src/debug.log")"
+done
+for write in "sed -i.bak s/a/b/ $repo/src/debug.log" "cd $repo && sed -ie s/a/b/ src/debug.log" "sed --in-place=.bak s/a/b/ $repo/src/debug.log"; do
+  assert_blocked "single repo: an in-place edit whose backup the ignore rule may not cover ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 for write in "cd $repo && cat >> .claude/handoffs/\$F" "cat >> $repo/.claude/handoffs/\$F" "rm $repo/.claude/handoffs/\$F"; do
   assert_blocked "single repo: a write under an ignored path through a shell expansion ($write)" "$(guard_at "$repo" Bash "$write")"
 done

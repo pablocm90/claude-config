@@ -108,6 +108,8 @@ edits_only_ignored() {
   [ "$in_main" = 0 ] || base="$target"
   IFS=$' \t' read -ra toks <<<"$1"
   for tok in "${toks[@]}"; do
+    # A backup suffix writes <file><suffix>, which the ignore rule need not cover.
+    [[ "$tok" =~ ^-[^-]*i. || "$tok" == --in-place=* ]] && return 1
     [[ "$tok" =~ ^\'[^\']*\'$ ]] || ! shell_expands "$tok" || return 1
     tok="${tok//[\"\']/}"
     case "$tok" in /*) path="$tok" ;; *) path="$base/$tok" ;; esac

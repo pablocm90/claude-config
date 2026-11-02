@@ -250,10 +250,11 @@ while IFS= read -r seg || [ -n "$seg" ]; do
     $'Git-ignored files there (plans, handoffs) stay writable: use Edit/Write or their absolute path.\n'
 done < <(printf '%s' "$cmd" | awk '
   d != "" { if ($0 == d) { d = ""; held = "" } else held = held $0 "\n"; next }
-  { print }
+  /\\$/ { sub(/\\$/, ""); cont = cont $0 " "; next }
+  { $0 = cont $0; cont = ""; print }
   match($0, /<<["\047]?[A-Za-z_][A-Za-z0-9_]*/) &&
     $0 !~ /(^|[^A-Za-z0-9_.\/-])(bash|sh|zsh)([^A-Za-z0-9_.\/-]|$)/ {
     d = substr($0, RSTART, RLENGTH); sub(/^<<["\047]?/, "", d)
   }
-  END { printf "%s", held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
+  END { printf "%s", cont held }' | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/;/\n/g' -e 's/|/\n/g')
 exit 0

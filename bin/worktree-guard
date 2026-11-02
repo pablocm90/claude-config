@@ -145,7 +145,8 @@ edits_only_ignored() {
 # parsed; one that does not parse, or an interpreter that fails, counts as in
 # place.
 sed_in_place() {
-  [[ "$1" =~ (^|[^[:alnum:]_])sed([^[:alnum:]_]|$) ]] || return 1
+  local unquoted=${1//[\"\'\\]/}
+  [[ "$unquoted" =~ (^|[^[:alnum:]_])sed([^[:alnum:]_]|$) ]] || return 1
   /usr/bin/python3 - "$1" <<'PY'
 import re, shlex, sys
 flag = re.compile(r"-[bnsrEuz]*i.*|--i(n(-(p(l(a(ce?)?)?)?)?)?)?(=.*)?", re.S)

@@ -149,7 +149,9 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](([^\$\`]|\$[^\(])*[[:space:]])?[\"\']?(-[bnsrEuz]*i|--i(n(-(p(l(a(ce?)?)?)?)?)?)?([=[:space:]\"\']|$)) ]] &&
+  local bare
+  bare=$(printf '%s' "$seg" | sed -E 's/\$\([^)]*\)//g; s/`[^`]*`//g')
+  [[ "$bare" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[bnsrEuz]*i|--i(n(-(p(l(a(ce?)?)?)?)?)?)?([=[:space:]\"\']|$)) ]] &&
     ! edits_only_ignored "$seg" && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.

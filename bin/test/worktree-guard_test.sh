@@ -166,7 +166,8 @@ git -C "$repo" init -q
 git -C "$repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$repo" worktree add -q -b "$SLUG" "$repo/.claude/worktrees/$SLUG" >/dev/null 2>&1
 echo .claude/handoffs/ >> "$repo/.git/info/exclude"
-mkdir -p "$repo/.claude/handoffs"
+mkdir -p "$repo/.claude/handoffs" "$repo/src"
+touch "$repo/.claude/handoffs/$SLUG.md" "$repo/src/app.ts"
 wt="$repo/.claude/worktrees/$SLUG"
 
 guard_at() {
@@ -184,13 +185,15 @@ assert_allowed "single repo: writing the ignored handoff" "$(guard_at "$repo" Wr
 for write in "git diff > $repo/.claude/handoffs/$SLUG.patch" "mkdir -p $repo/.claude/handoffs" "tee $repo/.claude/handoffs/$SLUG.md" "rm $repo/.claude/handoffs/$SLUG.md" "cp /tmp/h.md $repo/.claude/handoffs/$SLUG.md" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md"; do
   assert_allowed "single repo: a file command into the ignored handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
 done
-for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md"; do
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md <<'EOF'" "cd $repo/.claude && cat >> handoffs/$SLUG.md" "cd $repo && sed -i 's/a/b/' \".claude/handoffs/$SLUG.md\""; do
   assert_allowed "single repo: a relative write into the ignored handoffs after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
 echo dist/ >> "$repo/.git/info/exclude"
 assert_blocked "single repo: a file that only a directory pattern names is not ignored" "$(guard_at "$repo" Bash "touch $repo/dist")"
 assert_blocked "single repo: a file command naming an ignored path and a tracked one" "$(guard_at "$repo" Bash "rm $repo/.claude/handoffs/$SLUG.md $repo/src/app.ts")"
-assert_blocked "single repo: an in-place edit of a tracked file by a relative path after cd" "$(guard_at "$repo" Bash "cd $repo && sed -i s/a/b/ src/app.ts")"
+for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts"; do
+  assert_blocked "single repo: an in-place edit of a tracked file after cd ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 # The exemption covers where a write lands, not where a command runs from or what it moves away.
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
   assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"
@@ -242,6 +245,7 @@ assert_allowed "repo named like a shared dir: a relative write in another repo" 
 assert_allowed "repo named like a shared dir: an absolute write in another repo" "$(guard_at "$repo" Bash "rm $base/other/.claude/hooks/x.sh")"
 assert_blocked "repo named like a shared dir: an absolute write in its main checkout" "$(guard_at "$repo" Bash "rm $repo/bin/x")"
 assert_blocked "repo named like a shared dir: a write in its main checkout through ~" "$(HOME=$base guard_at "$repo" Bash 'rm ~/.claude/bin/x')"
+assert_blocked "repo named like a shared dir: an in-place edit after a cd the guard cannot resolve" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && sed -i s/a/b/ bin/x')"
 rm -rf "$base"
 
 [ "$fails" -eq 0 ] && echo "worktree-guard: all assertions passed"

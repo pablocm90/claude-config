@@ -88,6 +88,23 @@ targets_main() {
   return 1
 }
 
+# sed -i edits only files that already exist, so the tokens naming one under
+# the cd target are the files it writes. Nothing found there means the target
+# could not be resolved, and the write is refused.
+edits_only_ignored() {
+  local tok path seen=0
+  local -a toks
+  IFS=$' \t' read -ra toks <<<"$1"
+  for tok in "${toks[@]}"; do
+    tok="${tok//[\"\']/}"
+    case "$tok" in /*) path="$tok" ;; *) path="$target/$tok" ;; esac
+    [ -e "$path" ] || continue
+    ignored "$path" || return 1
+    seen=1
+  done
+  [ "$seen" = 1 ]
+}
+
 git_mutates() {
   [[ "$1" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
@@ -98,7 +115,7 @@ mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
   [[ "$seg" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?(-i|--in-place) ]] &&
-    { [ "$in_main" = 1 ] || targets_main "$seg" writes; } && return 0
+    if [ "$in_main" = 1 ]; then ! edits_only_ignored "$seg"; else targets_main "$seg" writes; fi && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.
   if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then

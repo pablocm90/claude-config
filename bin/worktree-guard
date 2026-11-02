@@ -42,13 +42,16 @@ shell_expands() {
   [[ "$1" == *[\*\?\[\{\$\`~\\]* ]]
 }
 
+# Only the repo holding the path decides: a root that ignores a nested repo
+# says nothing about that repo's files. The root comes first, so the last
+# repo holding the path is the deepest.
 ignored() {
-  local repo
+  local repo owner=
   ! shell_expands "$1" || return 1
   for repo in "${REPOS[@]}"; do
-    git -C "$repo" check-ignore -q "$1" 2>/dev/null && return 0
+    case "$1" in "$repo"/*) owner="$repo" ;; esac
   done
-  return 1
+  git -C "$owner" check-ignore -q "$1" 2>/dev/null
 }
 
 if [ "$tool" != Bash ]; then

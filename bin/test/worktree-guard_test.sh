@@ -275,5 +275,21 @@ assert_blocked "repo named like a shared dir: a write in its main checkout throu
 assert_blocked "repo named like a shared dir: an in-place edit after a cd the guard cannot resolve" "$(HOME=$base guard_at "$repo" Bash 'cd ~/.claude && sed -i s/a/b/ bin/x')"
 rm -rf "$base"
 
+# --- A workspace root that is itself a repo -------------------------------
+# The root ignores the nested repos it holds; a file in one is tracked or
+# ignored by the nested repo alone.
+repo=$(mktemp -d)
+mkdir "$repo/acme-backend"
+for dir in "$repo" "$repo/acme-backend"; do
+  git -C "$dir" init -q
+  git -C "$dir" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$dir" worktree add -q -b "$SLUG" "$dir/.claude/worktrees/$SLUG" >/dev/null 2>&1
+done
+echo /acme-backend/ >> "$repo/.git/info/exclude"
+echo /plans/ >> "$repo/acme-backend/.git/info/exclude"
+assert_blocked "root repo: a tracked file of a nested repo the root ignores" "$(guard_at "$repo" Write "$repo/acme-backend/app/x.rb")"
+assert_allowed "root repo: a file the nested repo ignores" "$(guard_at "$repo" Write "$repo/acme-backend/plans/x.md")"
+rm -rf "$repo"
+
 [ "$fails" -eq 0 ] && echo "worktree-guard: all assertions passed"
 exit "$fails"

@@ -151,6 +151,7 @@ import re, shlex, sys
 flag = re.compile(r"-[bnsrEuz]*i.*|--i(n(-(p(l(a(ce?)?)?)?)?)?)?(=.*)?", re.S)
 lex = shlex.shlex(sys.argv[1], posix=False, punctuation_chars=True)
 lex.whitespace_split = True
+lex.commenters = ""
 try:
     toks = list(lex)
     depth, tick, prev, in_sed = 0, False, None, False

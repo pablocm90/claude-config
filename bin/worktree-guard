@@ -128,13 +128,14 @@ mutates() {
   # says for itself whether it is in the checkout; a relative one resolves
   # against a cwd this segment has already been judged to be main, so it is
   # judged by the file it names under the cd target.
-  if [[ "$seg" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+) ]]; then
-    case "${BASH_REMATCH[1]}" in
-      /dev/* | \&*) ;;
-      /*) targets_main "${BASH_REMATCH[1]}" writes && return 0 ;;
-      *) [ "$in_main" = 1 ] && ignored "$target/${BASH_REMATCH[1]}" || return 0 ;;
+  local rest="$seg" dest
+  while [[ "$rest" =~ \>\>?[[:space:]]*([^[:space:]\|\&\;]+)(.*) ]]; do
+    dest="${BASH_REMATCH[1]}" rest="${BASH_REMATCH[2]}"
+    case "$dest" in
+      /*) targets_main "$dest" writes && return 0 ;;
+      *) [ "$in_main" = 1 ] && ignored "$target/$dest" || return 0 ;;
     esac
-  fi
+  done
   return 1
 }
 

@@ -194,6 +194,9 @@ assert_blocked "single repo: a file command naming an ignored path and a tracked
 for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts"; do
   assert_blocked "single repo: an in-place edit of a tracked file after cd ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+for write in "cd $repo && cat >> .claude/handoffs/$SLUG.md 2> src/app.ts" "cat > $repo/.claude/handoffs/$SLUG.md 2> $repo/src/app.ts"; do
+  assert_blocked "single repo: a redirect into a tracked file after one into the handoffs ($write)" "$(guard_at "$repo" Bash "$write")"
+done
 # The exemption covers where a write lands, not where a command runs from or what it moves away.
 for write in "cd $repo/.claude/handoffs && git commit -am x" "cd $repo/.claude/handoffs && rm -rf ../../src" "mv $repo/src/app.ts $repo/.claude/handoffs/x.md"; do
   assert_blocked "single repo: an ignored path does not carry a write out of it ($write)" "$(guard_at "$repo" Bash "$write")"

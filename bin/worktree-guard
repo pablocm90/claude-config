@@ -140,6 +140,40 @@ edits_only_ignored() {
   [ -z "$word" ] && [ "$seen" = 1 ]
 }
 
+# sed's in-place flag, among the words the shell hands sed: quotes removed,
+# words inside a command substitution left out. A segment that does not
+# parse, or an interpreter that fails, counts as in place.
+sed_in_place() {
+  /usr/bin/python3 - "$1" <<'PY'
+import re, shlex, sys
+flag = re.compile(r"-[bnsrEuz]*i.*|--i(n(-(p(l(a(ce?)?)?)?)?)?)?(=.*)?", re.S)
+lex = shlex.shlex(sys.argv[1], posix=False, punctuation_chars=True)
+lex.whitespace_split = True
+try:
+    toks = list(lex)
+    depth, tick, prev, in_sed = 0, False, None, False
+    for tok in toks:
+        skip = tick or depth > 0 or tok.startswith("`")
+        if tick or tok.startswith("`"):
+            tick = not tok.endswith("`") if tick else not (len(tok) > 1 and tok.endswith("`"))
+        elif tok == "(" and (depth or prev == "$"):
+            depth += 1
+        elif tok == ")" and depth:
+            depth -= 1
+        prev = tok
+        if skip:
+            continue
+        word = "".join(shlex.split(tok))
+        if in_sed and flag.fullmatch(word):
+            sys.exit(0)
+        in_sed = in_sed or word == "sed"
+except ValueError:
+    sys.exit(0)
+sys.exit(1)
+PY
+  [ "$?" != 1 ]
+}
+
 git_mutates() {
   [[ "$1" =~ ^[[:space:]]*git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(checkout|switch)[[:space:]]+(main|master)[[:space:]]*$ ]] && return 1
   [[ "$1" =~ (^|[[:space:]])git([[:space:]]|$) ]] &&
@@ -149,10 +183,7 @@ git_mutates() {
 mutates() {
   local seg="$1"
   git_mutates "$seg" && return 0
-  local bare
-  bare=$(printf '%s' "$seg" | sed -E 's/\$\([^)]*\)//g; s/`[^`]*`//g')
-  [[ "$bare" =~ (^|[[:space:]])sed[[:space:]](.*[[:space:]])?[\"\']?(-[bnsrEuz]*i|--i(n(-(p(l(a(ce?)?)?)?)?)?)?([=[:space:]\"\']|$)) ]] &&
-    ! edits_only_ignored "$seg" && return 0
+  sed_in_place "$seg" && ! edits_only_ignored "$seg" && return 0
   # For a copy only the destination is a write: reading a file out of the
   # main checkout is legitimate. A move also deletes its source.
   if [[ "$seg" =~ (^|[[:space:]])(cp|ln|install)([[:space:]]|$) ]]; then

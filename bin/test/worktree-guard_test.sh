@@ -202,6 +202,13 @@ assert_blocked "single repo: a file command naming an ignored path and a tracked
 for write in "cd $repo && sed -i s/a/b/ src/app.ts" "cd $repo && sed '-i' s/a/b/ src/app.ts" "cd $repo && sed -Ei s/a/b/ src/app.ts" "cd $repo && sed --in-pl s/a/b/ src/app.ts" "cd $repo && sed --i s/a/b/ src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md src/app.ts" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $repo/src/app.ts" "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md src/app.ts"; do
   assert_blocked "single repo: an in-place edit of a tracked file alongside an ignored one ($write)" "$(guard_at "$repo" Bash "$write")"
 done
+touch "$repo/src/my file.ts" "$repo/src/a;b.ts"
+for write in "sed -i s/a/b/ $repo/.claude/handoffs/$SLUG.md \"$repo/src/my file.ts\"" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md 'src/my file.ts'" "cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md 'src/a;b.ts'"; do
+  assert_blocked "single repo: an in-place edit of a quoted tracked path the guard splits ($write)" "$(guard_at "$repo" Bash "$write")"
+done
+for script in "'s/a b/c/'" "\"s/it's/its/\""; do
+  assert_allowed "single repo: an in-place edit whose quoted script holds a space or a quote ($script)" "$(guard_at "$repo" Bash "cd $repo && sed -i $script .claude/handoffs/$SLUG.md")"
+done
 # The shell expands a glob or a variable into files the guard never sees named.
 for operand in 'src/*.ts' '$F' 'src/app.t?' 'src/[a]pp.ts' 'src/{app,x}.ts' '`echo src/app.ts`' '~/src/app.ts' 'src/app\.ts' "'src/'*'.ts'"; do
   write="cd $repo && sed -i s/a/b/ .claude/handoffs/$SLUG.md $operand"

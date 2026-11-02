@@ -100,16 +100,30 @@ targets_main() {
   return 1
 }
 
+# A quoted word may hold spaces: it stays open until its quote closes.
+in_quote() {
+  local s="$1" q= i c
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    [ -n "$q" ] && { [ "$c" != "$q" ] || q=; continue; }
+    [[ "$c" == [\"\'] ]] && q="$c"
+  done
+  [ -n "$q" ]
+}
+
 # sed -i edits only files that already exist, so the tokens naming one under
 # the cd target, or the pane's cwd without one, are the files it writes.
 # Nothing found there means the target could not be resolved, and the write
 # is refused.
 edits_only_ignored() {
-  local tok path seen=0 base="$cwd"
+  local tok word= path seen=0 base="$cwd"
   local -a toks
   [ "$in_main" = 0 ] || base="$target"
   IFS=$' \t' read -ra toks <<<"$1"
   for tok in "${toks[@]}"; do
+    word="${word:+$word }$tok"
+    in_quote "$word" && continue
+    tok="$word" word=
     [[ "$tok" =~ ^\'[^\']*\'$ ]] || ! shell_expands "$tok" || return 1
     tok="${tok//[\"\']/}"
     # A backup suffix writes <file><suffix>, which the ignore rule need not cover.
@@ -119,7 +133,7 @@ edits_only_ignored() {
     ignored "$path" || return 1
     seen=1
   done
-  [ "$seen" = 1 ]
+  [ -z "$word" ] && [ "$seen" = 1 ]
 }
 
 git_mutates() {

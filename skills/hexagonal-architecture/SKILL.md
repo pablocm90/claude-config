@@ -16,18 +16,19 @@ The application is the **inside**: domain and use cases. Everything else is **ou
                          every source dependency points inward
 ```
 
-- **Driving port**: what the app offers, a use case (`placeOrder`). Driving adapters call it.
+- **Port**: one purposeful conversation between the app and something outside, named for that purpose: never a technology, and never a single use case.
+- **Driving port**: what the app offers: a conversation (`ForManagingOrders`) with one operation per use case (`place`, `cancel`). Driving adapters call it.
 - **Driven port**: what the app needs (`ForStoringOrders`). The inside declares it; driven adapters implement it.
 - **Dependency rule**: adapters depend on the inside; the inside names no adapter, framework or driver. This is the one rule everything else serves.
 - **Composition root**: the single place, at the entry point, that picks concrete adapters and wires them in. Tests are another composition root.
 
-Hexagonal says nothing about how the inside is modelled; for that, load `domain-driven-design`. For Rust (traits as ports, crates as the boundary) read [resources/rust.md](resources/rust.md).
+Hexagonal says nothing about how the inside is modelled or packaged; for that, load `domain-driven-design`. For Rust (traits as ports, crates as the boundary) read [resources/rust.md](resources/rust.md).
 
 ## Adding behaviour that crosses the boundary
 
 Follow `tdd` throughout; these steps give the shape the tests drive towards.
 
-1. **Write the use case's test first**, calling it through its driving port. The test names the use case in domain words, as a function from a command to a result. Done when the test is red and the use case's input, output and error types hold only domain or plain types: no request object, status code, row or driver error.
+1. **Write the use case's test first**, calling it through its driving port. The test names the use case in domain words, as an operation from a command to a result. Add that operation to the driving port whose conversation it joins; only a new conversation gets a new port. Done when the test is red and the use case's input, output and error types hold only domain or plain types: no request object, status code, row or driver error.
 2. **Name each driven port the test needs by purpose**: `ForStoringOrders`, `ForNotifyingCustomers`, `ForReadingTheClock`, not `OrderRepositoryPostgres`, and plug an in-memory fake into it. Done when every method takes and returns domain types, and each fake fits in a few lines.
 3. **Make the use case pass** against the fakes. Done when the test is green without a database, network or framework running.
 4. **Write the real adapter** against a contract suite shared with the fake (see *Testing*). Done when both pass the same suite.
@@ -37,7 +38,7 @@ Follow `tdd` throughout; these steps give the shape the tests drive towards.
 ## Port design
 
 - **Owned by the inside**: the port lives with the use cases, in their language. An adapter that forces its shape onto the port (`query(sql)`, ORM entities, `Response`) has turned the dependency around.
-- **Few, by purpose**: a hexagon usually has a handful of ports, grouped by the conversation they serve. One port per table or per class is an ORM wearing a hexagon.
+- **Few, one per conversation**: Cockburn favours two to four, and names one port per use case as an extreme to avoid. One port per use case widens what callers and the composition root must name; one per table or class is an ORM wearing a hexagon.
 - **Domain errors out**: a driven port reports `OrderNotFound`, not `RowNotFound` or a status code. The adapter maps.
 - **One driven-port call is one transaction**, owned by the adapter. When a use case needs two writes to succeed or fail together, that is one port method taking both, or the aggregate is drawn wrong (`domain-driven-design`, *Aggregate rules*).
 - **Time, randomness and ids are driven ports too**, or plain values passed in. A use case that reads the system clock cannot be tested deterministically.
@@ -52,14 +53,26 @@ interface ForStoringOrders {
   byId(id: OrderId): Promise<Order | undefined>;
 }
 
-const makePlaceOrder =
-  ({ orders, clock }: { orders: ForStoringOrders; clock: () => Date }) =>
-  async (command: PlaceOrder): Promise<Result<Order, OrderRejected>> => {
+interface ForManagingOrders {
+  place(command: PlaceOrder): Promise<Result<Order, OrderRejected>>;
+  cancel(command: CancelOrder): Promise<Result<Order, CancelRejected>>;
+}
+
+const makeOrderManagement = ({
+  orders,
+  clock,
+}: {
+  orders: ForStoringOrders;
+  clock: () => Date;
+}): ForManagingOrders => ({
+  place: async (command) => {
     const decision = decidePlacement({ command, now: clock() });
     if (!decision.ok) return decision;
     await orders.save(decision.value);
     return decision;
-  };
+  },
+  cancel: async (command) => { /* … */ },
+});
 ```
 
 **Prefer passing values to injecting ports.** Where a use case can gather what it needs first, act on it last, and keep the decision pure in between (the *impureim sandwich*), the domain function takes only values and needs no port at all. Inject a port only where the core must talk to the outside mid-decision.
@@ -93,9 +106,15 @@ The **use case is the primary test boundary**: call it through its driving port,
 
 A write goes through the use case and the domain model so invariants hold. A read that only shows data can use a separate read port returning a view shape straight from the adapter: loading aggregates to render a list buys nothing. Same database, same process; this is *CQRS-lite*, not event sourcing.
 
+## Packaging
+
+The pattern prescribes no packages and no layers inside the hexagon: only the dependency rule. Package by Module (`domain-driven-design`, *Modules*): what a concept needs, adapters included, sits together, and the dependency rule holds between its files. A package per layer makes the rule cheap to check and spreads every change across all of them.
+
+Giving each Module its own driving port, which other Modules call, is this skill's extension: Cockburn's article describes one application. Keep a Module's surface small enough that callers need not know its inside.
+
 ## Enforcing the dependency rule
 
-The rule has a fixed shape, so check it with tooling rather than review: the crate graph in Rust (see `resources/rust.md`), `dependency-cruiser` or ESLint `no-restricted-imports` in TypeScript.
+The rule has a fixed shape, so check it with tooling rather than review: features and the crate graph in Rust (see `resources/rust.md`), `dependency-cruiser` or ESLint `no-restricted-imports` in TypeScript.
 
 ## When it is overhead
 
@@ -103,4 +122,4 @@ A thin CRUD service with no rules of its own, a one-off script, or a spike gains
 
 ## Done when
 
-Every new use case is tested through its driving port with fakes, every driven port with a real adapter has a contract suite run against both the fake and that adapter, no core type names an infrastructure type, and the composition root is the only code that names concrete adapters.
+Every new use case is an operation on the driving port of its conversation and is tested through it with fakes, every driven port with a real adapter has a contract suite run against both the fake and that adapter, no core type names an infrastructure type, and the composition root is the only code that names concrete adapters.

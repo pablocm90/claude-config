@@ -6,7 +6,7 @@ Crates are Rust's strongest boundary, so spend them on what changes together: on
 
 ```
 crates/orders/src/
-  lib.rs         the surface: the driving port and the domain types
+  lib.rs         the surface: the driving port and its implementation, the domain types, each feature's adapter
   domain.rs
   use_cases.rs   ForManagingOrders and its implementation
   ports.rs       driven port traits
@@ -21,10 +21,12 @@ This shape is a choice, not the pattern's, and its checks are not yet proven on 
 |---|---|
 | The core names no framework or adapter | Adapters are optional features; CI builds the crate with none, and `cargo tree -p orders -e normal --no-default-features` lists nothing infrastructural |
 | Adapters do not depend on each other | `cargo hack check --each-feature` |
-| `domain` does not depend on `use_cases` | A small test over each file's `use` lines |
-| The arrows between Modules | `deny.toml` |
+| `domain` does not depend on `use_cases`, and neither names an adapter or an adapter feature | A small test over each file's `use` lines and `cfg` attributes |
+| Dependencies between Modules point one way, as the project draws them | `deny.toml` |
 
-The alternative is a crate per layer (`domain`, `application`, one per adapter). Cargo then enforces the rule for free, but each change spreads: on one project, single-topic PRs touched 3.9 crates on average and the application crate's root held about 124 names. Choose it only when adapters ship separately.
+Cargo refuses a cycle between crates, so Modules that use each other in both directions need a shared concept moved or found (`domain-driven-design`, *Modules*).
+
+The alternative is a crate per layer (`domain`, `application`, one per adapter). Cargo then enforces the rule for free, but each change spreads: on one project, single-topic PRs touched 3.9 crates on average and the application crate's root held about 124 names. It suits adapters that ship separately.
 
 Async runtimes belong in `[dev-dependencies]` unless an adapter feature needs one.
 
@@ -58,7 +60,7 @@ pub struct AccountManagement<A: ForStoringAccounts, H: ForHashingPasswords> {
 
 ## Fakes and contract tests
 
-An inline `#[cfg(test)]` fake is invisible to other crates, so the real adapter's tests cannot run the same suite against it. Once a port has a real adapter, move the fake and the contract suite somewhere both can reach:
+An inline `#[cfg(test)]` fake is invisible to `tests/` and to other crates, so an integration test cannot run the same suite against it. Once a port has a real adapter, move the fake and the contract suite somewhere both can reach:
 
 - a `test-support` feature on the Module's crate exposing `fakes` and `contracts` modules, enabled only from `[dev-dependencies]`, or
 - a small testing crate depending on it, when another crate's adapter must run the suite.
@@ -75,6 +77,8 @@ pub async fn stores_accounts<A: ForStoringAccounts>(make: impl AsyncFn() -> A) {
 }
 
 // tests/postgres_accounts.rs
+#![cfg(feature = "postgres")]
+
 #[tokio::test]
 async fn postgres_accounts_honour_the_contract() {
     accounts::contracts::stores_accounts(async || PostgresAccounts::new(test_db().await)).await;

@@ -13,19 +13,19 @@ For Rust (newtypes, enums, private fields) read [resources/rust.md](resources/ru
 
 1. **State the invariants**: each thing that must always be true, as one sentence in glossary words ("an account's email is unique within the system", "an order's total is the sum of its lines"). Done when every rule the change touches is written down.
 2. **Value object or entity.** If two instances with the same attributes are interchangeable, it is a **value object**: immutable, compared by value (`EmailAddress`, `Money`, `DateRange`). If it keeps an identity while its attributes change, it is an **entity** (`Account`, `Order`). Done when each concept is one or the other.
-3. **Make illegal states unrepresentable.** Every value object has one constructor that parses raw input and returns a result: valid value or a domain error. Lifecycle states are a union with one shape per state, so a `Draft` order has no `shippedAt` field to forget. Done when no code path outside the module can build an invalid instance.
+3. **Make illegal states unrepresentable.** Every value object has one constructor that parses raw input and returns a result: valid value or a domain error. Lifecycle states are a union with one shape per state, so a `Draft` order has no `shippedAt` field to forget. Done when no code path outside the code that declares it can build an invalid instance.
 4. **Draw the aggregate.** An **aggregate** is the smallest cluster of entities and values that must be consistent at the end of one transaction; its root is the only entry point. Done when every invariant from step 1 has exactly one enforcer: one aggregate; or, for a rule over a whole set (uniqueness), a constraint behind the repository port that surfaces as a domain error; or, for a rule spanning aggregates that may lag, a named eventually consistent process.
 5. **Place each rule** with the table below. Done when every rule sits at the lowest row that can hold it.
 
 ## Modules
 
-A Module is part of the model, not a folder. Each one tells part of the system's story, holds a cohesive set of concepts, and has a glossary word for a name: `orders`, never `services` or `repositories`.
+A Module (capitalised here; a Rust module or a file is smaller, and `refactoring`'s deep module is any interface at any scale) is part of the model, not a folder. Each one tells part of the system's story, holds a cohesive set of concepts, and has a glossary word for a name: `orders`, not `services` or `repositories`.
 
-- **One concept, one Module**: all the code implementing a concept sits together. Layers separate inside the Module, so the domain stays isolated without scattering a concept across packages.
-- **Low coupling means concepts you can reason about independently**, not a metric. When two Modules cannot be, change the model or find the overlooked concept that brings their shared elements together.
-- **Modules may use each other**: they share one model, so a Module uses another's domain types and repositories. Evans sets no gate between Modules; the gate is the aggregate root. A project may narrow this to give each Module a small surface, as its own rule.
+- **One concept, one Module**: all the code implementing a concept sits together, with its layers separated inside the Module. This is this skill's choice and departs from Evans, who concentrates the domain model in one layer and packages it apart from other code. It rests on his key goal being isolation, which he says hexagonal may serve "as well or better" to the degree the model avoids dependencies on other concerns.
+- **Low coupling means concepts you can reason about independently**, not a metric, and the corresponding code decouples with them. When two Modules cannot be reasoned about apart, change the model or find the overlooked concept that brings their shared elements together.
+- **Access between Modules is a project's rule**: Evans's Reference states none. His gate is the aggregate root, and repositories sit behind a well-known global interface. A project either lets a Module use another's domain types and repositories, which adds no wrapping reads, or only its domain types and driving port, which keeps each surface small. Done when the project's CLAUDE.md or plan says which.
 
-Done when each new file sits in the Module whose concept it implements, and that Module's name is in the glossary.
+Done when each new file implementing a domain concept sits in that concept's Module, and that Module's name is in the glossary. For a codebase already packaged by layer, follow `hexagonal-architecture`, *Packaging*.
 
 ## Where code belongs
 
@@ -45,13 +45,13 @@ Purity is necessary but not sufficient for the domain: a pure function that form
 
 - **The root is the gate**: outside code holds references to the root only, and an inner member is passed out for one operation at most. The root enforces the aggregate's invariants.
 - **Small**: one root plus what must change atomically with it. A large aggregate serialises unrelated writes and loads data nobody needs.
-- **Reference other aggregates by id** by default. Evans allows holding another root; Vernon's by-id rule is stricter and keeps each load small.
+- **Reference other aggregates by id**, which keeps each load small. This is Vernon's rule and this skill's choice; Evans lets outside objects hold a root.
 - **One aggregate per transaction.** When a use case must change two, ask whether the business really needs both at once; usually one changes now and the other follows.
 - **Always valid**: every function on an aggregate takes a valid aggregate and returns a valid one or a domain error. No setters followed by a `validate()`.
 
 ## In code
 
-Model in the language's idiom. In Ruby, an object whose methods guard its own state (`oop`). In TypeScript and Rust, immutable data and functions, as below. Evans states the patterns in objects: what carries over is the boundary and who enforces the invariant, not the syntax.
+In Ruby, model an object whose methods guard its own state (`oop`). In TypeScript and Rust, model immutable data and functions, as below. Both are this skill's choice: Evans states the patterns in objects, and what carries over is the boundary and who enforces the invariant, not the syntax.
 
 ```ts
 type Order =
@@ -80,13 +80,13 @@ Parse at the edge of the inside, then trust the types: a use case parses its com
 
 ## Repositories
 
-A repository is a driven port per aggregate root that needs global access, with collection semantics: add and remove whole aggregates, and select them by id or by criteria a domain expert would recognise. It never returns half an aggregate or takes query fragments. Reads that only display data go through a separate read port (`hexagonal-architecture`, *Reads versus writes*).
+A repository is a driven port per aggregate root that needs global access, with collection semantics: add and remove whole aggregates, and select them by id or by criteria a domain expert would recognise. Immutable aggregates add `save`, which Evans does not list, because a changed aggregate is a new value. It never returns half an aggregate or takes query fragments. Reads that only display data go through a separate read port (`hexagonal-architecture`, *Reads versus writes*).
 
 ## Bounded contexts
 
 When one word means different things to different parts of the business ("account" for billing and for sign-in), those parts are separate **bounded contexts**, each with its own model of the word. Translate where they meet rather than growing one type to serve both. `domain-modeling` keeps a glossary per context.
 
-Modules divide one model; bounded contexts divide models. A wide codebase with one glossary needs Modules, not contexts.
+Modules divide a model; a bounded context bounds where one model applies. Evans expects several models on any large project, so check whether the words really differ. When one glossary holds across a wide codebase, this skill reaches for Modules.
 
 ## Growing the model
 
@@ -98,4 +98,4 @@ Test the use case first, through its driving port with fakes (`hexagonal-archite
 
 ## Done when
 
-Every new concept sits in the Module that tells its story, every invariant the change touches is written in glossary words and enforced in exactly one place, no value object can be built invalid from outside its module, every rule sits at the lowest row of the placement table that holds it, and each use case changes at most one aggregate per transaction.
+Every new concept sits in the Module that tells its story, every invariant the change touches is written in glossary words and enforced in exactly one place, no value object can be built invalid from outside the code that declares it, every rule sits at the lowest row of the placement table that holds it, and each use case changes at most one aggregate per transaction.

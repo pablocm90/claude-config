@@ -146,7 +146,7 @@ Skills are organised into four tiers. **Tier 1 is transversal** — it applies r
 |---|---|
 | `api-design` | REST endpoints, module boundaries, prop interfaces, any public contract. |
 | `architecture-survey` | Survey the code that changes most for shallow modules and report deepening candidates; explore the one the human picks. Vocabulary: `refactoring`'s `resources/deep-modules.md`. |
-| `hexagonal-architecture` | Ports and adapters: ports as conversations, use cases, adapters, composition root, contract tests for fakes, the inward dependency rule. |
+| `hexagonal-architecture` | Ports and adapters: ports as conversations, use cases, adapters, packaging, composition root, contract tests for fakes, the inward dependency rule. |
 | `domain-driven-design` | Modules, value objects, entities, aggregates, domain services: where a business rule lives and how invariants always hold. Glossary work stays in `domain-modeling`. |
 | `typescript-strict` | Defining types/schemas, reviewing type safety, strict-mode flags. |
 | `functional` | Logic / data transforms / mutation bugs. Don't over-apply heavy FP. |

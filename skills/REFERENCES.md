@@ -9,6 +9,10 @@ Authoritative sources behind the skills. Each entry documents what was taken fro
 ### Eric Evans — "Domain-Driven Design: Tackling Complexity in the Heart of Software" (2003) — [DDD Reference (free PDF)](https://www.domainlanguage.com/ddd/reference/)
 - **Ubiquitous language** → `domain-modeling` (glossary); `domain-driven-design` intro: names in code are glossary terms
 - **Entities, value objects, aggregates** → `domain-driven-design`: "Modelling a concept" steps 2–4
+- **Modules** (tell the story of the system, cohesive concepts, names in the ubiquitous language, low coupling as concepts reasoned about independently) → `domain-driven-design`: "Modules"
+- **"The Pitfalls of Infrastructure-Driven Packaging"** (book, pp. 114–115: "keep all the code that implements a single conceptual object in the same MODULE", then "Use packaging to separate the domain layer from other code", the opposite of placing adapters in a Module; read in [a quoted excerpt](https://fghso.blogspot.com/2019/09/the-pitfalls-of-infrastructure-driven.html), not the book) → background to `domain-driven-design`: "Modules", first bullet, and `hexagonal-architecture`: "Packaging", both marked as this skill's choice
+- **The aggregate root as the only outside reference** → `domain-driven-design`: "Aggregate rules"
+- **Layers' key goal is isolation, and hexagonal "may serve as well or better"** to the degree the model avoids dependencies on other concerns → `domain-driven-design`: "Modules", first bullet
 - **Repositories as collection-like interfaces** → `domain-driven-design`: "Repositories"
 - **Domain services** (logic spanning aggregates, stateless, expressed in domain language) → `domain-driven-design`: "Where code belongs"
 - **Bounded contexts** → `domain-driven-design`: "Bounded contexts"
@@ -24,7 +28,7 @@ Authoritative sources behind the skills. Each entry documents what was taken fro
 - **Repository pattern** (collection-like semantics) → `domain-driven-design`: "Repositories"
 
 ### Khalil Stemmler — [khalilstemmler.com](https://khalilstemmler.com)
-- **Value objects as plain types with factory functions** (functional approach) → `domain-driven-design`: "Functional style" (branded type with a parse constructor)
+- **Value objects as plain types with factory functions** (functional approach) → `domain-driven-design`: "In code" (branded type with a parse constructor)
 - **Module-based composition roots** (no DI container) → `hexagonal-architecture`: "Dependency injection"
 
 ### Microsoft — [.NET Architecture Guidance](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/)
@@ -33,9 +37,9 @@ Authoritative sources behind the skills. Each entry documents what was taken fro
 - **Testing by layer** (unit for domain, integration for adapters) → `hexagonal-architecture`: "Testing"
 
 ### Scott Wlaschin — "Domain Modeling Made Functional" (2018) + [fsharpforfunandprofit.com](https://fsharpforfunandprofit.com/ddd/)
-- **"Making Illegal States Unrepresentable"** — one shape per state with discriminated unions → `domain-driven-design`: "Modelling a concept" step 3, "Functional style"; Rust enums and typestate in `resources/rust.md`
+- **"Making Illegal States Unrepresentable"** — one shape per state with discriminated unions → `domain-driven-design`: "Modelling a concept" step 3, "In code"; Rust enums and typestate in `resources/rust.md`
 - **Workflows as functions** whose input is a command and output is events → `domain-driven-design/resources/domain-events.md`
-- **Validate at boundaries, trust inside** → `domain-driven-design`: "Functional style", last paragraph
+- **Validate at boundaries, trust inside** → `domain-driven-design`: "In code", last paragraph
 
 ### Jeremie Chassaing — ["Functional Event Sourcing Decider"](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider) (2021)
 - **Decider pattern** (`decide(command, state) → events[]`, `evolve(state, event) → state`) → `domain-driven-design/resources/domain-events.md`: "The decider pattern"
@@ -61,7 +65,9 @@ Authoritative sources behind the skills. Each entry documents what was taken fro
 - **Core concept** (application as hexagon, ports on edges, adapters outside) → `hexagonal-architecture`: opening diagram
 - **Primary (driving) vs secondary (driven) ports/adapters** → `hexagonal-architecture`: opening definitions
 - **"Configurable Dependency"** — the hexagon declares needs via ports, a startup configurer wires adapters → `hexagonal-architecture`: composition root, "Dependency injection"
-- **Port granularity** (a handful of ports, named by purpose, "For…") → `hexagonal-architecture`: "Port design"
+- **A port is a purposeful conversation; two to four ports across an application; one port per use case is an extreme** ("Neither extreme appears optimal", though he adds a wrong count does no particular damage, so grouping use cases is marked as this skill's choice) → `hexagonal-architecture`: opening definitions, "Port design"
+- **No packaging or layering rules in the article** → `hexagonal-architecture`: "Packaging"
+- **"For…" port names** are not in the 2005 article, and we have no source attributing them to him. Juan Manuel Garrido de Paz teaches naming a port for what it is "for doing" in [his series](https://jmgarridopaz.github.io/content/hexagonalarchitecture-ig/chapter1.html) → `hexagonal-architecture`: opening definitions, step 2
 - **Tests as just another driving adapter** → `hexagonal-architecture`: "Testing"
 
 ### Thomas Pierrain — "Outside-In Diamond TDD" + hexagonal architecture talks
@@ -71,7 +77,7 @@ Authoritative sources behind the skills. Each entry documents what was taken fro
 - **Hex arch as the structural container, DDD as the model inside** → the split between `hexagonal-architecture` and `domain-driven-design`, and their cross-references
 
 ### Netflix Tech Blog — ["Ready for changes with Hexagonal Architecture"](https://netflixtechblog.com/ready-for-changes-with-hexagonal-architecture-b315ec967749) (2020)
-- **Port design by business purpose, not technology**; swapping a data source adapter without touching the core → `hexagonal-architecture`: "Port design"
+- **Port design by business purpose, not technology**; swapping a data source adapter without touching the core → `hexagonal-architecture`: opening definitions
 
 ### Mark Seemann — "Dependency Injection in .NET" + [blog.ploeh.dk](https://blog.ploeh.dk)
 - **"Functional architecture is ports and adapters"** and the **impureim sandwich** → `hexagonal-architecture`: "Dependency injection", prefer passing values

@@ -37,6 +37,6 @@ Taking `self` by value and returning the next state makes a stale reference to t
 
 One `enum` per operation's failure modes, named in domain words (`OrderRejected::Empty`, `OrderRejected::AlreadyPlaced`). Derive `PartialEq` so tests compare errors directly. `thiserror` is acceptable in `domain` for `Display` and `Error` impls: it adds no runtime coupling.
 
-## Keep the domain crate dependency-free
+## Keep the domain dependency-free
 
-`domain` depends on the standard library and, at most, small pure crates (`thiserror`, a non-empty collection). Serialisation is an adapter concern: rather than `#[derive(Serialize)]` on domain types, the HTTP adapter defines its own DTOs and maps, so the wire format and the model can change independently. Time arrives as a value passed in, not a `SystemTime::now()` call.
+`domain`, a Rust module or a crate, depends on the standard library and, at most, small pure crates (`thiserror`, a non-empty collection). Serialisation is an adapter concern: rather than `#[derive(Serialize)]` on domain types, the HTTP adapter defines its own DTOs and maps, so the wire format and the model can change independently. Time arrives as a value passed in, not a `SystemTime::now()` call.

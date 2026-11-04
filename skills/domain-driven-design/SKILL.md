@@ -1,6 +1,6 @@
 ---
 name: domain-driven-design
-description: "Domain-driven design, tactical patterns: model value objects, entities, aggregates and domain services so business invariants always hold. Use when modelling a new domain concept, deciding which aggregate or layer owns a rule, when business rules sit in use cases or handlers over raw strings, or when a type can hold an invalid state."
+description: "Domain-driven design, tactical patterns: model Modules, value objects, entities, aggregates and domain services so business invariants always hold. Use when modelling a new domain concept, deciding which Module, aggregate or layer owns a rule, when a codebase is split by technical layer, when business rules sit in use cases or handlers over raw strings, or when a type can hold an invalid state."
 ---
 
 # Domain-driven design
@@ -17,7 +17,19 @@ For Rust (newtypes, enums, private fields) read [resources/rust.md](resources/ru
 4. **Draw the aggregate.** An **aggregate** is the smallest cluster of entities and values that must be consistent at the end of one transaction; its root is the only entry point. Done when every invariant from step 1 has exactly one enforcer: one aggregate; or, for a rule over a whole set (uniqueness), a constraint behind the repository port that surfaces as a domain error; or, for a rule spanning aggregates that may lag, a named eventually consistent process.
 5. **Place each rule** with the table below. Done when every rule sits at the lowest row that can hold it.
 
+## Modules
+
+A Module is part of the model, not a folder. Each one tells part of the system's story, holds a cohesive set of concepts, and has a glossary word for a name: `orders`, never `services` or `repositories`.
+
+- **One concept, one Module**: all the code implementing a concept sits together. Layers separate inside the Module, so the domain stays isolated without scattering a concept across packages.
+- **Low coupling means concepts you can reason about independently**, not a metric. When two Modules cannot be, change the model or find the overlooked concept that brings their shared elements together.
+- **Modules may use each other**: they share one model, so a Module uses another's domain types and repositories. Evans sets no gate between Modules; the gate is the aggregate root. A project may narrow this to give each Module a small surface, as its own rule.
+
+Done when each new file sits in the Module whose concept it implements, and that Module's name is in the glossary.
+
 ## Where code belongs
+
+Pick the Module first. The table then gives the place inside it.
 
 | Code | Belongs in | Ask |
 |---|---|---|
@@ -31,14 +43,15 @@ Purity is necessary but not sufficient for the domain: a pure function that form
 
 ## Aggregate rules
 
+- **The root is the gate**: outside code holds references to the root only, and an inner member is passed out for one operation at most. The root enforces the aggregate's invariants.
 - **Small**: one root plus what must change atomically with it. A large aggregate serialises unrelated writes and loads data nobody needs.
-- **Reference other aggregates by id**, never by holding the object.
+- **Reference other aggregates by id** by default. Evans allows holding another root; Vernon's by-id rule is stricter and keeps each load small.
 - **One aggregate per transaction.** When a use case must change two, ask whether the business really needs both at once; usually one changes now and the other follows.
 - **Always valid**: every function on an aggregate takes a valid aggregate and returns a valid one or a domain error. No setters followed by a `validate()`.
 
-## Functional style
+## In code
 
-Model with immutable data and functions, not mutable objects:
+Model in the language's idiom. In Ruby, an object whose methods guard its own state (`oop`). In TypeScript and Rust, immutable data and functions, as below. Evans states the patterns in objects: what carries over is the boundary and who enforces the invariant, not the syntax.
 
 ```ts
 type Order =
@@ -67,11 +80,13 @@ Parse at the edge of the inside, then trust the types: a use case parses its com
 
 ## Repositories
 
-A repository is a driven port per aggregate with collection semantics: get the whole aggregate by id, save the whole aggregate. It never returns half an aggregate or takes query fragments. Reads that only display data go through a separate read port (`hexagonal-architecture`, *Reads versus writes*).
+A repository is a driven port per aggregate root that needs global access, with collection semantics: add and remove whole aggregates, and select them by id or by criteria a domain expert would recognise. It never returns half an aggregate or takes query fragments. Reads that only display data go through a separate read port (`hexagonal-architecture`, *Reads versus writes*).
 
 ## Bounded contexts
 
 When one word means different things to different parts of the business ("account" for billing and for sign-in), those parts are separate **bounded contexts**, each with its own model of the word. Translate where they meet rather than growing one type to serve both. `domain-modeling` keeps a glossary per context.
+
+Modules divide one model; bounded contexts divide models. A wide codebase with one glossary needs Modules, not contexts.
 
 ## Growing the model
 
@@ -83,4 +98,4 @@ Test the use case first, through its driving port with fakes (`hexagonal-archite
 
 ## Done when
 
-Every invariant the change touches is written in glossary words and enforced in exactly one place, no value object can be built invalid from outside its module, every rule sits at the lowest row of the placement table that holds it, and each use case changes at most one aggregate per transaction.
+Every new concept sits in the Module that tells its story, every invariant the change touches is written in glossary words and enforced in exactly one place, no value object can be built invalid from outside its module, every rule sits at the lowest row of the placement table that holds it, and each use case changes at most one aggregate per transaction.

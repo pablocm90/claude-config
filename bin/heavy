@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# heavy <command> [args...] — run a memory-hungry job (mutation testing, E2E)
+# once no other heavy job on this machine is running. Sessions that each start
+# one at once push the machine past systemd-oomd's limit, and oomd then kills
+# whole tmux panes, Claude sessions included.
+set -uo pipefail
+
+[ "$#" -gt 0 ] || { echo "usage: heavy <command> [args...]" >&2; exit 2; }
+
+dir="${XDG_RUNTIME_DIR:-$HOME/.cache}"
+mkdir -p "$dir"
+lock="${HEAVY_LOCK:-$dir/heavy.lock}"
+exec 9>>"$lock"
+if ! flock --nonblock 9; then
+  echo "heavy: waiting for $(cat "$lock.holder" 2>/dev/null || echo 'another heavy job')" >&2
+  flock 9
+fi
+printf '%s (pid %s, %s)\n' "$*" "$$" "$PWD" > "$lock.holder"
+exec "$@"

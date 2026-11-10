@@ -109,6 +109,8 @@ See **Skill Map** below for the full index.
 
 **Project-level hooks:** Projects should add a PostToolUse hook in `.claude/settings.json` to auto-format/lint after Write/Edit. Per-file hooks do not replace the project's full pre-push gate.
 
+**Heavy jobs:** start mutation testing (cargo-mutants, Stryker, mutant), E2E suites and full pre-push gates through `heavy` (`heavy cargo mutants …`), in the background. Several sessions share this machine, and two such jobs at once push it past systemd-oomd's limit, which kills whole tmux panes, Claude sessions included. `heavy: waiting for …` means another session's job holds the machine; yours starts when it ends.
+
 ## Skill Map
 
 Skills are organised into four tiers. **Tier 1 is transversal** — it applies regardless of stack. Tier 2 is architecture/language-aware. Tier 3 is web/UX-specific. Tier 4 is project-scoped (auto-loaded inside the project).

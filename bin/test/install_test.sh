@@ -69,6 +69,7 @@ assert_eq "and leaves the setting alone" \
 b=$(machine bins)
 assert_reports "the directory they went to is stated once" "$(run "$b")" "bin dir"
 assert_reports "the tools are linked" "$(run "$b")" "claude-dev-review"
+assert_reports "heavy is linked with them" "$(run "$b")" "heavy"
 assert_eq "and the link resolves into the checkout" \
   "$(readlink -f "$b/home/.local/bin/claude-dev")" \
   "$(readlink -f "$b/checkout/bin/claude-dev")"

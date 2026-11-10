@@ -228,6 +228,13 @@ The PR/CI pane. Lists every repo and any *interesting* worktree — dirty, ahead
 or behind, or carrying an open PR — and counts the idle ones. Loops on a timer;
 `--once` prints a single snapshot.
 
+### `heavy`
+
+`heavy <command>` runs a memory-hungry job (mutation testing, E2E, a full gate)
+once no other job started through `heavy` is running on the machine, and says
+whose job it is waiting for. Sessions that each start one at once trip
+systemd-oomd, which kills whole tmux panes. `HEAVY_LOCK` moves the lock file.
+
 ### tmux keys
 
 Prefix is `C-a`.
@@ -296,7 +303,7 @@ generate a project `CLAUDE.md`, hooks and commands.
 | `skills/` | 33 skills in four tiers; stack deltas in `resources/rails.md`, `resources/typescript.md` |
 | `agents/` | subagent definitions |
 | `commands/` | slash commands: `/setup`, `/plan`, `/cycle`, `/continue`, `/diff`, `/generate-pr-review` |
-| `bin/` | `install` (wire a machine), `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `statusline` |
+| `bin/` | `install` (wire a machine), `claude-dev` (tmux workspace), `claude-dev-review`, `claude-dev-status`, `heavy`, `statusline` |
 | `bin/lib/refs.sh` | reference heuristics shared by the review and its tests |
 | `bin/test/` | behaviour tests for the tooling |
 | `dotfiles/tmux.conf` | prefix `C-a`; `prefix+D` status, `prefix+r` review, `prefix+S` serve |

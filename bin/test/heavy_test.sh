@@ -42,6 +42,12 @@ assert_contains "and while waiting it names the job it waits for" \
 "$HEAVY" sh -c "echo third-alone >> '$log'" 2>"$tmp/quiet.err"
 assert_eq "a job with the machine to itself says nothing" "$(cat "$tmp/quiet.err")" ""
 
+# --- the lock lives where only this user writes -----------------------------
+home="$tmp/home"; mkdir -p "$home"
+env -u HEAVY_LOCK -u XDG_RUNTIME_DIR HOME="$home" "$HEAVY" true
+assert_eq "without a runtime dir the lock goes under the user's cache, not /tmp" \
+  "$(ls "$home/.cache")" "$(printf 'heavy.lock\nheavy.lock.holder')"
+
 # --- without a command ------------------------------------------------------
 "$HEAVY" 2>"$tmp/usage.err"
 assert_eq "no command is a usage error" "$?" "2"

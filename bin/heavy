@@ -7,7 +7,9 @@ set -uo pipefail
 
 [ "$#" -gt 0 ] || { echo "usage: heavy <command> [args...]" >&2; exit 2; }
 
-lock="${HEAVY_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/heavy.lock}"
+dir="${XDG_RUNTIME_DIR:-$HOME/.cache}"
+mkdir -p "$dir"
+lock="${HEAVY_LOCK:-$dir/heavy.lock}"
 exec 9>>"$lock"
 if ! flock --nonblock 9; then
   echo "heavy: waiting for $(cat "$lock.holder" 2>/dev/null || echo 'another heavy job')" >&2

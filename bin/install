@@ -17,7 +17,7 @@ ROOT="${CLAUDE_CONFIG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # The tools invoked by name — from a shell, from the tmux bindings, from
 # Claude. statusline is not among them: settings.json names it by absolute
 # path. Neither is preflight, which is run as bin/preflight in the checkout.
-TOOLS=(claude-dev claude-dev-review claude-dev-status)
+TOOLS=(claude-dev claude-dev-review claude-dev-status heavy)
 
 # A section names the place the lines under it are about; one line per fact
 # below it: a dim glyph, the thing, what is true of it.

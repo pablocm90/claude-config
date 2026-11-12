@@ -190,3 +190,5 @@ For refactoring methodology, load the `refactoring` skill.
 ## Browser Automation
 
 Use the Playwright MCP tools (playwright plugin) for web automation: navigate → snapshot → interact via element refs → re-snapshot after page changes. Fall back to `WebFetch`/`curl` for simple content fetches.
+
+@private.md

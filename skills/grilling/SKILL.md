@@ -16,7 +16,7 @@ Interview the user until you share one understanding of the idea, with nothing l
 
 The **frontier** is every open decision whose prerequisites are settled: what you can ask now without guessing at an answer you have not heard. Each turn, take the frontier question whose answer unblocks the most and ask it alone, with your **recommended answer** and the reason for it. Each answer reshapes the tree; recompute the frontier before the next question.
 
-Ask with structure when the options are the value, and in free text when the user's own words are (domain terms, wording). `find-gaps`, "Asking with Structure", has the rules.
+When the answer is a pick from options, ask with `AskUserQuestion`, recommended option first and marked. When the user's own words are the value (domain terms, wording), ask in free text.
 
 ## Facts are yours, decisions are theirs
 

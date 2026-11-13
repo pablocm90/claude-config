@@ -66,6 +66,7 @@ If you find yourself jumping to transformation 5+ immediately, you likely need m
 - Print findings, fix them, then reinspect — loop until a pass finds nothing
 - Cleanup subtracts; if a finding wants new abstraction it belongs in REFACTOR
 - All tests must pass after each fix
+- When the change added or changed tests, the test review before the commit is the `test-design-reviewer` skill, run inline or in a fresh subagent told to read its `SKILL.md`. It reads these skills; `pr-test-analyzer` does not. Act on a delete it proposes once a mutant run backs it
 
 ---
 

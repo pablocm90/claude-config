@@ -38,6 +38,11 @@
 # Serving is per-project: a repo that is neither Rails nor yarn puts its start
 # command on one line in <repo>/.claude/serve, and a workspace that does not
 # live on :3000/:4000 lists its ports in <root>/.claude/ports.
+#
+# Private per-repo task files live in ~/.claude/task-mcp/, outside this repo's
+# allowlist: <repo>.json is an MCP config each task's Claude starts with, and
+# <repo>.setup one command a new worktree runs in its shell pane; {worktree}
+# in either stands for the task's worktree.
 set -euo pipefail
 
 CLAUDE_CMD="${CLAUDE_DEV_CLAUDE_CMD:-claude}"

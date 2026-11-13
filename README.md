@@ -264,7 +264,7 @@ green when it is this window, grey when another task has it.
 
 ## Wiring a new project
 
-The framework is generic; four things are per-project. `claude-dev doctor`
+The framework is generic; five things are per-project. `claude-dev doctor`
 names the ones a workspace has not done yet, each with the command that
 satisfies it, because every one of them fails silently — an unmarked root, a
 repo with no origin remote, an unignored worktree directory, a ports file that
@@ -287,6 +287,21 @@ echo '8000 5173'          > <workspace>/.claude/ports   # default: 3000 4000
 Ask what it resolved with `claude-dev serve-cmd` and `claude-dev serve-ports`.
 A ports file that survives comment-stripping with no digits left in it counts
 as absent, and serving quietly falls back to 3000/4000; doctor reports that.
+
+**Per-task MCP servers.** A task's Claude is launched from the workspace
+root, so a server registered for the repo answers from the main checkout. Put
+it in `~/.claude/task-mcp/<repo>.json` instead — a plain MCP config, outside
+this repo's allowlist, so a server that must stay private never lands here —
+and every task session, cycled ones included, starts it with `{worktree}`
+replaced by that task's worktree. `<repo>.setup` holds one command, such as
+the index such a server reads, that each newly cut worktree runs in its shell
+pane:
+
+```bash
+echo '{"mcpServers": {"graph": {"command": "graph-mcp", "args": ["--root", "{worktree}"]}}}' \
+  > ~/.claude/task-mcp/<repo>.json
+echo 'heavy graph-mcp index {worktree}' > ~/.claude/task-mcp/<repo>.setup
+```
 
 **Worktrees.** `claude-dev task <slug>` cuts them at
 `<repo>/.claude/worktrees/<slug>`; gitignore that path in the project — not

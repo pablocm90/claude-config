@@ -45,6 +45,7 @@ launched_argv() {
   local line cmd
   line=$(grep -F -- "send-keys -t $1 claude " "$LOG" | tail -1)
   cmd=${line#*"send-keys -t $1 "}
+  cmd=${cmd% C-m}
   eval "set -- $cmd"
   printf '%s\n' "$@"
 }
@@ -66,6 +67,9 @@ run task task1
 FAKE_WINDOWS=task1 run cycle task1
 [ "$(graph_root alpha:task1.1)" = "$ws/app/.claude/worktrees/task1" ] ||
   fail "a cycled task's graph server is rooted at its worktree (got '$(graph_root alpha:task1.1)')"
+mcp_values=$(launched_argv alpha:task1.1 | awk '/^--mcp-config$/ { on = 1; next } /^-/ { on = 0 } on' | wc -l)
+[ "$mcp_values" -eq 1 ] ||
+  fail "a cycled task's prompt is not read as one more MCP config (--mcp-config took $mcp_values values)"
 
 # --- a repo the task leaves out starts no server ----------------------------
 git clone -q "$tmp/origin" "$ws/lib"

@@ -206,9 +206,10 @@ cmd_hub() {
 # A task's Claude session is reachable from claude.ai and the mobile app under
 # the task's name. The name is passed explicitly: --remote-control takes an
 # optional one, and would otherwise swallow cycle's prompt as the name.
+# --mcp-config takes any number of values, so it goes before that name.
 task_claude() {
   local root="$1" window="$2" r config wt json
-  printf '%s --remote-control %q' "$CLAUDE_CMD" "$window"
+  printf '%s' "$CLAUDE_CMD"
   while IFS= read -r r; do
     wt="$r/.claude/worktrees/$window"
     config=$(task_private "$wt" json)
@@ -216,6 +217,7 @@ task_claude() {
     json=$(<"$config")
     printf ' --mcp-config %q' "${json//\{worktree\}/"$wt"}"
   done < <(list_repos "$root")
+  printf ' --remote-control %q' "$window"
 }
 
 # A repo's private task files live under ~/.claude, outside this public repo's

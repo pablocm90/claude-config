@@ -38,6 +38,11 @@
 # Serving is per-project: a repo that is neither Rails nor yarn puts its start
 # command on one line in <repo>/.claude/serve, and a workspace that does not
 # live on :3000/:4000 lists its ports in <root>/.claude/ports.
+#
+# Private per-repo task files live in ~/.claude/task-mcp/, outside this repo's
+# allowlist: <repo>.json is an MCP config each task's Claude starts with, and
+# <repo>.setup one command a new worktree runs in its shell pane; {worktree}
+# in either stands for the task's worktree.
 set -euo pipefail
 
 CLAUDE_CMD="${CLAUDE_DEV_CLAUDE_CMD:-claude}"
@@ -201,8 +206,32 @@ cmd_hub() {
 # A task's Claude session is reachable from claude.ai and the mobile app under
 # the task's name. The name is passed explicitly: --remote-control takes an
 # optional one, and would otherwise swallow cycle's prompt as the name.
+# --mcp-config takes any number of values, so it goes before that name.
 task_claude() {
-  printf '%s --remote-control %q' "$CLAUDE_CMD" "$1"
+  local root="$1" window="$2" r config wt json
+  printf '%s' "$CLAUDE_CMD"
+  while IFS= read -r r; do
+    wt="$r/.claude/worktrees/$window"
+    config=$(task_private "$wt" json)
+    [ -f "$config" ] && [ -d "$wt" ] || continue
+    json=$(<"$config")
+    printf ' --mcp-config %q' "${json//\{worktree\}/"$wt"}"
+  done < <(list_repos "$root")
+  printf ' --remote-control %q' "$window"
+}
+
+# A repo's private task files live under ~/.claude, outside this public repo's
+# allowlist; {worktree} in them stands for the task's worktree.
+task_private() {
+  printf '%s/.claude/task-mcp/%s.%s' "$HOME" "$(basename "$(main_repo_for "$1")")" "$2"
+}
+
+# A fresh split is the active pane, so the setup lands in the worktree's shell,
+# where its progress stays in view.
+run_task_setup() {
+  local setup
+  setup=$(first_line "$(task_private "$1" setup)") || return 0
+  tmux send-keys -t "$2" "${setup//\{worktree\}/"$1"}" C-m
 }
 
 # Left by `task --stride`, cleared by `done`; cycle reads it to tell the fresh
@@ -253,9 +282,9 @@ cmd_task() {
     [ "${#repos[@]}" -gt 0 ] || die "no repos found under $root"
   fi
 
-  local wts=() r wt resumed=0
+  local wts=() fresh=() r wt resumed=0
   for r in "${repos[@]}"; do
-    if [ -d "$r/.claude/worktrees/$window" ]; then resumed=1; fi
+    if [ -d "$r/.claude/worktrees/$window" ]; then resumed=1; fresh+=(0); else fresh+=(1); fi
     wt=$(ensure_worktree "$r" "$window" "$branch")
     echo "worktree: $wt (branch $branch)"
     wts+=("$wt")
@@ -263,7 +292,7 @@ cmd_task() {
 
   # Existing worktrees = resumed task: open the conversation picker so the
   # task's previous Claude session can be picked up where it left off.
-  local claude_launch; claude_launch=$(task_claude "$window")
+  local claude_launch; claude_launch=$(task_claude "$root" "$window")
   if [ "$resumed" -eq 1 ]; then claude_launch="$claude_launch --resume"; fi
 
   # Right column: a plain shell per worktree (cd'd in via -c), each ready for
@@ -271,10 +300,14 @@ cmd_task() {
   # it in any of these panes.
   tmux new-window -t "$session" -n "$window" -c "$root"
   tmux send-keys -t "$session:$window" "$claude_launch" C-m
-  tmux split-window -h -l 40% -c "${wts[0]}" -t "$session:$window"
-  local extra
-  for extra in "${wts[@]:1}"; do
-    tmux split-window -v -c "$extra" -t "$session:$window"
+  local i
+  for i in "${!wts[@]}"; do
+    if [ "$i" -eq 0 ]; then
+      tmux split-window -h -l 40% -c "${wts[0]}" -t "$session:$window"
+    else
+      tmux split-window -v -c "${wts[$i]}" -t "$session:$window"
+    fi
+    [ "${fresh[$i]}" -eq 0 ] || run_task_setup "${wts[$i]}" "$session:$window"
   done
   tmux split-window -v -l 30% -c "$root" -t "$session:$window"
   tmux select-pane -t "$session:$window.1"
@@ -404,7 +437,7 @@ cmd_cycle() {
   # One tmux invocation: respawn kills this script too when run from the
   # target pane, so send-keys must already be queued server-side.
   tmux respawn-pane -k -t "$session:$window.1" -c "$root" \; \
-    send-keys -t "$session:$window.1" "$(task_claude "$window") $(printf '%q' "$prompt")" C-m
+    send-keys -t "$session:$window.1" "$(task_claude "$root" "$window") $(printf '%q' "$prompt")" C-m
   echo "cycled: fresh session in $session:$window"
 }
 

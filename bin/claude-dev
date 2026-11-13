@@ -212,6 +212,14 @@ task_claude() {
   done < <(list_repos "$root")
 }
 
+# A fresh split is the active pane, so the setup lands in the worktree's shell,
+# where its progress stays in view.
+run_task_setup() {
+  local setup
+  setup=$(first_line "$HOME/.claude/task-mcp/$(basename "$(main_repo_for "$1")").setup") || return 0
+  tmux send-keys -t "$2" "${setup//\{worktree\}/$1}" C-m
+}
+
 # Left by `task --stride`, cleared by `done`; cycle reads it to tell the fresh
 # session to wait.
 stride_marker() { printf '%s/.claude/handoffs/%s.stride' "$1" "$2"; }
@@ -260,9 +268,9 @@ cmd_task() {
     [ "${#repos[@]}" -gt 0 ] || die "no repos found under $root"
   fi
 
-  local wts=() r wt resumed=0
+  local wts=() fresh=() r wt resumed=0
   for r in "${repos[@]}"; do
-    if [ -d "$r/.claude/worktrees/$window" ]; then resumed=1; fi
+    if [ -d "$r/.claude/worktrees/$window" ]; then resumed=1; fresh+=(0); else fresh+=(1); fi
     wt=$(ensure_worktree "$r" "$window" "$branch")
     echo "worktree: $wt (branch $branch)"
     wts+=("$wt")
@@ -278,10 +286,14 @@ cmd_task() {
   # it in any of these panes.
   tmux new-window -t "$session" -n "$window" -c "$root"
   tmux send-keys -t "$session:$window" "$claude_launch" C-m
-  tmux split-window -h -l 40% -c "${wts[0]}" -t "$session:$window"
-  local extra
-  for extra in "${wts[@]:1}"; do
-    tmux split-window -v -c "$extra" -t "$session:$window"
+  local i
+  for i in "${!wts[@]}"; do
+    if [ "$i" -eq 0 ]; then
+      tmux split-window -h -l 40% -c "${wts[0]}" -t "$session:$window"
+    else
+      tmux split-window -v -c "${wts[$i]}" -t "$session:$window"
+    fi
+    [ "${fresh[$i]}" -eq 0 ] || run_task_setup "${wts[$i]}" "$session:$window"
   done
   tmux split-window -v -l 30% -c "$root" -t "$session:$window"
   tmux select-pane -t "$session:$window.1"

@@ -76,6 +76,17 @@ run task task2 app
 [ "$(launched_argv alpha:task2 | grep -cx -- --mcp-config)" -eq 1 ] ||
   fail "a task restricted to app starts only app's MCP servers"
 
+# --- a new worktree runs its repo's setup in its own shell pane, once -------
+printf '# build the graph\nindex-graph {worktree}\n' > "$home/.claude/task-mcp/app.setup"
+: > "$LOG"
+run task task3
+grep -qxF -- "send-keys -t alpha:task3 index-graph $ws/app/.claude/worktrees/task3 C-m" "$LOG" ||
+  fail "a new worktree runs its repo's setup against itself"
+: > "$LOG"
+run task task3
+! grep -qF -- "index-graph" "$LOG" ||
+  fail "a resumed worktree does not run setup again"
+
 rm -rf "$bin" "$tmp"
 [ "$fails" -eq 0 ] && echo "task-mcp: all passed"
 exit "$fails"

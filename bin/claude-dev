@@ -202,22 +202,29 @@ cmd_hub() {
 # the task's name. The name is passed explicitly: --remote-control takes an
 # optional one, and would otherwise swallow cycle's prompt as the name.
 task_claude() {
-  local root="$1" window="$2" r config wt
+  local root="$1" window="$2" r config wt json
   printf '%s --remote-control %q' "$CLAUDE_CMD" "$window"
   while IFS= read -r r; do
-    config="$HOME/.claude/task-mcp/$(basename "$r").json"
     wt="$r/.claude/worktrees/$window"
+    config=$(task_private "$wt" json)
     [ -f "$config" ] && [ -d "$wt" ] || continue
-    printf ' --mcp-config %q' "$(sed "s|{worktree}|$wt|g" "$config")"
+    json=$(<"$config")
+    printf ' --mcp-config %q' "${json//\{worktree\}/"$wt"}"
   done < <(list_repos "$root")
+}
+
+# A repo's private task files live under ~/.claude, outside this public repo's
+# allowlist; {worktree} in them stands for the task's worktree.
+task_private() {
+  printf '%s/.claude/task-mcp/%s.%s' "$HOME" "$(basename "$(main_repo_for "$1")")" "$2"
 }
 
 # A fresh split is the active pane, so the setup lands in the worktree's shell,
 # where its progress stays in view.
 run_task_setup() {
   local setup
-  setup=$(first_line "$HOME/.claude/task-mcp/$(basename "$(main_repo_for "$1")").setup") || return 0
-  tmux send-keys -t "$2" "${setup//\{worktree\}/$1}" C-m
+  setup=$(first_line "$(task_private "$1" setup)") || return 0
+  tmux send-keys -t "$2" "${setup//\{worktree\}/"$1"}" C-m
 }
 
 # Left by `task --stride`, cleared by `done`; cycle reads it to tell the fresh

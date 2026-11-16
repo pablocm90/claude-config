@@ -29,6 +29,10 @@
 #   claude-dev serve-ports               the ports a served task takes over
 #   claude-dev mode                      this task window's rhythm: until-pr or stride
 #   claude-dev ls                        list task windows and worktrees
+#   claude-dev du [--here] [dir]         disk taken by every project's worktrees,
+#                                        per project and in total (dir defaults to
+#                                        $CLAUDE_DEV_PROJECTS, else ~/Documents/project);
+#                                        --here: only the project you are in
 #   claude-dev doctor                    check this workspace against the
 #                                        conventions claude-dev assumes
 #
@@ -784,6 +788,39 @@ cmd_ls() {
   done < <(list_repos "$root")
 }
 
+# Disk taken by every task worktree of every project under a projects folder.
+# Glob, not list_repos: a leftover folder under .claude/worktrees takes disk
+# too, and a project with no origin remote still accumulates worktrees.
+cmd_du() {
+  local here=0
+  if [ "${1:-}" = --here ]; then here=1; shift; fi
+  local dir="${1:-${CLAUDE_DEV_PROJECTS:-$HOME/Documents/project}}" wt rel rows project="" cwd root
+  if [ "$here" = 1 ]; then
+    cwd=$(pwd -P); root=$(cd "$dir" && pwd -P)
+    case "$cwd" in "$root"/?*) ;; *) die "not inside a project under $dir" ;; esac
+    project="${cwd#"$root"/}"; project="${project%%/*}"
+  fi
+  rows=$(for wt in "$dir"/*/.claude/worktrees/*/ "$dir"/*/*/.claude/worktrees/*/; do
+    [ -d "$wt" ] || continue
+    rel="${wt#"$dir"/}"; rel="${rel%/}"
+    [ -z "$project" ] || [ "${rel%%/*}" = "$project" ] || continue
+    printf '%s\t%s\t%s\n' "$(du -sk "$wt" | cut -f1)" "${rel%%/*}" "${rel#*/}"
+  done)
+  [ -n "$rows" ] || { echo "no worktrees under $dir${project:+/$project}"; return 0; }
+  awk -F'\t' 'NR == FNR { total[$2] += $1; next } { print total[$2] "\t" $0 }' \
+      <(printf '%s\n' "$rows") <(printf '%s\n' "$rows") |
+    sort -t $'\t' -k1,1nr -k3,3 -k2,2nr |
+    awk -F'\t' '
+      function human(k) {
+        if (k >= 1048576) return sprintf("%.1fG", k / 1048576)
+        if (k >= 1024) return sprintf("%.1fM", k / 1024)
+        return k "K"
+      }
+      $3 != project { project = $3; projects++; printf "%-50s %8s\n", project, human($1) }
+      { sub(/\.claude\/worktrees\//, "", $4); printf "  %-48s %8s\n", $4, human($2); all += $2 }
+      END { printf "%-50s %8s\n", "total: " NR " worktrees in " projects " projects", human(all) }'
+}
+
 # Workspace diagnosis ---------------------------------------------------------
 # The conventions above are enforced nowhere and fail silently — a workspace
 # that does not meet them raises no error, it just leaves the tool operating
@@ -856,6 +893,7 @@ case "${1:-}" in
   serve-cmd) shift; cmd_serve_cmd "$@" ;;
   serve-ports) shift; cmd_serve_ports "$@" ;;
   ls)     shift; cmd_ls "$@" ;;
+  du)     shift; cmd_du "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
   review) shift; CLAUDE_DEV_ROOT="$(resolve_root)" exec claude-dev-review "$@" ;;
   *)      cmd_hub "$@" ;;
